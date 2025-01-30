@@ -4,7 +4,7 @@ Ce dépôt est destiné au projet ECL sur les modèles de coûts.
 
 ## Bonnes pratiques pour le développement
 
-## Quelques recommandations
+### Quelques recommandations
 
 - Le code doit être écrit en anglais (nom de variables, commentaires ...)
 - Lorsqu'une variable correspond à une grandeur physique, ajoutez un commentaire pour spécifier son unité.
