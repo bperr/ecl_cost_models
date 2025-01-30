@@ -10,9 +10,9 @@ Ce dépôt est destiné au projet ECL sur les modèles de coûts.
 - Lorsqu'une variable correspond à une grandeur physique, ajoutez un commentaire pour spécifier son unité.
 - N'hésitez pas à écrire des commentaires régulièrement.
 - Il existe des conventions de nommages des variables pour rendre la compréhension du code plus facile:
- - `variable` ou `my_long_variable_name` pour les variables.
- - `MyClass` pour les classes.
- - `MY_CONSTANT` pour les constantes.  
+	- `variable` ou `my_long_variable_name` pour les variables.
+ 	- `MyClass` pour les classes.
+ 	- `MY_CONSTANT` pour les constantes.  
 Ce sont des recommandations, pas des règles, il peut donc y avoir des exceptions (typiquement pour les unités il ne faudrait pas qu'on confonde mW et MW)
 - En python, vous pouvez spécifier le type des variables dans une fonction. C'est optionnel et ne change rien au fonctionnement du code, mais c'est plus facile de comprendre pour ceux qui le relisent ;)
 ```python
@@ -42,8 +42,8 @@ Pas la peine de faire tous les niveaux, la séquence d'ntroduction (onglet princ
 - Sur la page de création de la pull request, vous pouvez lui donner un nom et la décrire rapidement puis cliquer sur "Create pull request". Une page spécifique à cette pull request est alors créée.
 - Prévenez nous sur Teams que vous avez créé une pull request ou ajoutez nous en tant que reviewers (en haut à droite de la page). **Ne cliquez pas sur le bouton "Merge pull request"**.
 - A partir de là, c'est nous qui intervenons. L'idée est que l'on relise votre code pour suggérer au besoin des modifications.
- - Si nous avons des retours à vous faire, nous laisserons des commentaires. Vous devrez alors à nouveau travailler sur la branche `develop`: de nouveaux commits puis lorsque vous êtes satisfait `git push`.
- - Si tout nous convient, **nous** validons la pull request avec le bouton "Merge pull request".
+	- Si nous avons des retours à vous faire, nous laisserons des commentaires. Vous devrez alors à nouveau travailler sur la branche `develop`: de nouveaux commits puis lorsque vous êtes satisfait `git push`.
+	- Si tout nous convient, **nous** validons la pull request avec le bouton "Merge pull request".
 - La branche `main` du dépôt distant contient maintenant vos modifications. Pour mettre à jour votre version locale de `main`, suivez les deux premiers points.
 
 ## Présentation du projet
