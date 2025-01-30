@@ -27,7 +27,7 @@ Cela permet de travailler sur différents aspects du code en parallèle sans ris
 
 La bonne pratique est de toujours travailler sur une branche différente de `main` (la branche principale du dépôt git) et de rapatrier ses développements sur `main` qu'une fois qu'ils sont complètement implémentés et validés.  
 Pour apprendre les bases de la gestion des branches, vous pouvez regarder ce [lien](https://learngitbranching.js.org/?locale=fr_FR). 
-Pas la peine de faire tous les niveaux, la séquence d'ntroduction (onglet principal) et push & pull (onglet remote) suffiront à avoir de bonnes bases !
+Pas la peine de faire tous les niveaux, la séquence d'introduction (onglet principal) et push & pull (onglet remote) suffiront à avoir de bonnes bases !
 
 ### Séquence classique
 
@@ -42,7 +42,7 @@ Pas la peine de faire tous les niveaux, la séquence d'ntroduction (onglet princ
 - Sur la page de création de la pull request, vous pouvez lui donner un nom et la décrire rapidement puis cliquer sur "Create pull request". Une page spécifique à cette pull request est alors créée.
 - Prévenez nous sur Teams que vous avez créé une pull request ou ajoutez nous en tant que reviewers (en haut à droite de la page). **Ne cliquez pas sur le bouton "Merge pull request"**.
 - A partir de là, c'est nous qui intervenons. L'idée est que l'on relise votre code pour suggérer au besoin des modifications.
-	- Si nous avons des retours à vous faire, nous laisserons des commentaires. Vous devrez alors à nouveau travailler sur la branche `develop`: de nouveaux commits puis lorsque vous êtes satisfait `git push`.
+	- Si nous avons des retours à vous faire, nous laisserons des commentaires. Vous devrez alors à nouveau travailler sur la branche `develop`: faire de nouveaux commits, puis lorsque vous êtes satisfait `git push`.
 	- Si tout nous convient, **nous** validons la pull request avec le bouton "Merge pull request".
 - La branche `main` du dépôt distant contient maintenant vos modifications. Pour mettre à jour votre version locale de `main`, suivez les deux premiers points.
 
