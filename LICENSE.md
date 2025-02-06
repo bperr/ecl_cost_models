@@ -1,6 +1,6 @@
 BSD 3-Clause License
 
-Copyright (c) 2025, Centrale Lyon students(Claire Goasdoue, Gaspard Coront-Ducluzeau, Jeremy Pouget, Matthieu Fouquet, 
+Copyright (c) 2025, Centrale Lyon students (Claire Goasdoue, Gaspard Coront-Ducluzeau, Jeremy Pouget, Matthieu Fouquet, 
 Thibault Suatton and Tristan De-Lacoste-Lareymondie) and SuperGrid Institute (Nicolas Barla and Baptiste Perreyon)
 
 Redistribution and use in source and binary forms, with or without
