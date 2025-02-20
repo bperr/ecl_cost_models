@@ -16,15 +16,14 @@ def load_database_prod_user(folder_path, country_list, start_year, end_year):
     
     # Liste des fichiers avec leur chemin complet
     file_paths = [os.path.join(folder_path, file) for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))]
-    
-    # Création du DataFrame
-    folder_path_df = pd.DataFrame(file_paths, columns=["File Path"])
-    
-
-    for file_path in folder_path_df :
         
-        file_path = folder_path_df.loc[0, "File Path"]  # Récupère la première valeur de la colonne
+
+    for file_path in file_paths :
+        
         file_name = os.path.splitext(os.path.basename(file_path))[0]
+        
+        country = file_name.split("_")[1]
+        
         df = pd.read_excel(file_path, sheet_name=file_name, header=0)
                
         df = df[ (df["Début de l'heure"].dt.year >= start_year) & (df["Début de l'heure"].dt.year <= end_year)]
@@ -32,16 +31,13 @@ def load_database_prod_user(folder_path, country_list, start_year, end_year):
         # Définir la première colonne comme index (time)
         df.set_index(df.columns[0], inplace=True)
         df.index.name = "Time"  # Renommer l'index pour la lisibilité
+          
+        # Initialiser l'entrée pour le country
+        data_dict_prod_user[country] = {}
         
-        for country in countries_list : 
-    
-            # Initialiser l'entrée pour le country
-            data_dict_prod_user[country] = {}
-    
-            # Restructurer les données sous la forme souhaitée
-            for prod_mode in df[df.columns[1:]]:  # Parcours des modes de production
-                data_dict_prod_user[country][prod_mode] = df[prod_mode].to_dict()
-        
+        # Restructurer les données sous la forme souhaitée
+        for prod_mode in df.columns[1:]:  # Parcours des modes de production
+            data_dict_prod_user[country][prod_mode] = df[prod_mode].to_dict()
 
     return data_dict_prod_user
 
@@ -52,18 +48,15 @@ def load_database_price_user(folder_path, country_list, start_year, end_year):
     # Dictionnaire pour stocker les données
     data_dict_price_user = {}
     
+    for country in countries_list : 
+        data_dict_price_user[country] = {}
+    
     # Liste des fichiers avec leur chemin complet
     file_paths = [os.path.join(folder_path, file) for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))]
     
-    # Création du DataFrame
-    folder_path_df = pd.DataFrame(file_paths, columns=["File Path"])
-    
-
-    for file_path in folder_path_df :
+    for file_path in file_paths :
         
-        file_path = folder_path_df.loc[0, "File Path"]  # Récupère la première valeur de la colonne
-        file_name = os.path.splitext(os.path.basename(file_path))[0]
-        df = pd.read_excel(file_path, sheet_name=file_name, header=0)
+        df = pd.read_excel(file_path, header=0)
         
         df = df[ (df["Time"].dt.year >= start_year) & (df["Time"].dt.year <= end_year)]
         df = df[["Time"] + countries_list]
@@ -73,13 +66,8 @@ def load_database_price_user(folder_path, country_list, start_year, end_year):
         df.index.name = "Time"  # Renommer l'index pour la lisibilité
         
         for country in countries_list : 
-    
-            # # Initialiser l'entrée pour le country
-            # data_dict_price_user[country] = {}
-            
-            data_dict_price_user = df.to_dict()
+            data_dict_price_user[country].update(df[country].to_dict())
         
-
     return data_dict_price_user
     
     
