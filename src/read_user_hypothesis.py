@@ -1,6 +1,8 @@
 import pandas as pd
+from pathlib import Path
+from typing import Dict
 
-def read_user_hypothesis_data(file_path):
+def read_user_hypothesis_data(file_path:Path) -> Dict[str, Dict[str, Dict[str, float]]]:
     """
     Loads the user hypothesis Excel file and generates a dictionary containing 
     the marginal cost data structured as {year}{country}{production_mode}.
@@ -25,17 +27,12 @@ def read_user_hypothesis_data(file_path):
         
         # Set the first column as index (production mode)
         df.set_index(df.columns[0], inplace=True)
-        df.index.name = "Production_mode"  # Rename index for clarity
         
         # Convert values to float (if possible)
         df = df.apply(pd.to_numeric, errors='coerce')
 
-        # Initialize the entry for the year
-        hypothesis_data_dict[year] = {}
-
-        # Restructure the data into the desired format
-        for country in df.columns:  # Iterate over countries
-            hypothesis_data_dict[year][country] = df[country].to_dict()
+        # Restructure the data into the desired format            
+        hypothesis_data_dict[year] = df.to_dict()
 
     return hypothesis_data_dict
 
