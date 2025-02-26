@@ -1,21 +1,24 @@
 import pandas as pd
 from pathlib import Path
+from typing import Union
+from function_map_fullnames_to_alpha2codes import map_full_name_to_alpha2_code
 
-def read_interconnection_power_data(file_path, year):
+def read_interconnection_power_data(file_path_data: Path, file_path_map: Path, year: Union[int, str]) -> pd.DataFrame:
     """
     Loads and transforms interconnection power data from source file, selecting the sheet for the specified year.
 
-    :param file_path: Path to the Excel file containing interconnection power data.
+    :param file_path_data: Path to the Excel file containing interconnection power data.
+    :param file_path_map: Path to the Excel file containing the mapping of EU country names and alpha2 codes.
     :param year: Year corresponding to the sheet to be loaded.
     :return: DataFrame with columns "Time", "Power (MW)", "country_from", and "country_to".
     """
     
     # Verify if the sheet exists
-    xls = pd.ExcelFile(file_path)  
+    xls = pd.ExcelFile(file_path_data)  
     sheet_name = str(year)  # Convert year to string to match sheet names
     
     if sheet_name not in xls.sheet_names:
-        raise ValueError(f"Sheet '{sheet_name}' does not exist in the file '{file_path}'. Available sheets: {xls.sheet_names}")
+        raise ValueError(f"Sheet '{sheet_name}' does not exist in the file '{file_path_data}'. Available sheets: {xls.sheet_names}")
     
     # Load data from the specified sheet
     df_interco_raw = pd.read_excel(xls, sheet_name=sheet_name)
@@ -26,12 +29,8 @@ def read_interconnection_power_data(file_path, year):
     reshaped_df.drop(columns="direction", inplace=True)
     df_interco = reshaped_df[reshaped_df["Power (MW)"] != 0] # Avoid interco with 0 Power exchanged
 
-    # Load country name conversion file
-    path_conversion_country_name_code = Path(r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD Interco\List of EU countries.xlsx")
-    country_code_conversion_df = pd.read_excel(path_conversion_country_name_code)
-
-    # Create a mapping dictionary from country name to Alpha-2 code
-    country_to_alpha2 = dict(zip(country_code_conversion_df["Country"], country_code_conversion_df["Alpha-2"]))
+     # Call function map_full_name_to_alpha2_code which returns a conversion file
+    country_to_alpha2 = map_full_name_to_alpha2_code(file_path_map)
 
     # Replace country names in the dataframe with their Alpha-2 codes
     df_interco_renamed = df_interco.replace({"country_from": country_to_alpha2, "country_to": country_to_alpha2})
@@ -40,6 +39,7 @@ def read_interconnection_power_data(file_path, year):
 
 # Example usage
 if __name__ == "__main__":
-    file_path = r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD Interco\Interconnection time series.xlsx"
+    file_path_data = r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD Interco\Interconnection time series.xlsx"
+    file_path_map = r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD Interco\List of EU countries.xlsx"
     year = 2018  # Year to load
-    interconnection_power_data = read_interconnection_power_data(file_path, year)
+    interconnection_power_data = read_interconnection_power_data(file_path_data, file_path_map, year)
