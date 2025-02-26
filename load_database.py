@@ -14,8 +14,7 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
     if end_year < start_year:
         raise ValueError("End year cannot be before start year")
 
-    # Dictionnaire pour stocker les données
-    data_dict_prod_user = {}
+    data_dict_prod_user = {} # Dictionnary to store data
 
     file_name_template = "Prod_{}_2015_2019.xlsx"  # Country code will be inserted instead of brackets
 
@@ -24,26 +23,24 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
         sheet_name = file_name[:-5]  # filename without .xlsx
         df = pd.read_excel(folder_path / f"{file_name}", sheet_name=sheet_name, header=0)
 
-        df = df[(df["Début de l'heure"].dt.year >= start_year) & (df["Début de l'heure"].dt.year <= end_year)]
+        df = df[(df["Début de l'heure"].dt.year >= start_year) & (df["Début de l'heure"].dt.year <= end_year)] # Filter only the years wanted
 
-        # Définir la première colonne comme index (time)
-        df.set_index(df.columns[0], inplace=True)  # Column name is also kept as index name
+        df.set_index(df.columns[0], inplace=True)  # First column (time) as index and Column name is also kept as index name
 
-        # Initialiser l'entrée pour le country
-        data_dict_prod_user[country] = {}
+        data_dict_prod_user[country] = {} # Initialize the dictionary with countries
 
-        # Restructurer les données sous la forme souhaitée
-        for prod_mode in df[df.columns]:  # Parcours des modes de production
+        # Store for each country, then for each production mode, the produced power every hour
+        for prod_mode in df.columns[1:]:
             data_dict_prod_user[country][prod_mode] = df[prod_mode].to_dict()
 
     return data_dict_prod_user
 
 
-def load_database_price_user(folder_path, country_list, start_year, end_year):
+def load_database_price_user(folder_path: Path, country_list: list[str], start_year: int, end_year: int) -> dict:
     if end_year < start_year:
         raise ValueError("End year cannot be before start year")
 
-    # Dictionnaire pour stocker les données
+    # Initialize the dictionary with countries
     data_dict_price_user = {country: dict() for country in country_list}
 
     file_name_template = "SPOT_{}.xlsx"  # Year will be inserted instead of brackets
@@ -57,8 +54,8 @@ def load_database_price_user(folder_path, country_list, start_year, end_year):
 
         for country in country_list:
             country_columns = [zone for zone in df.columns if zone.startswith(country)]
-            country_df = zones_to_country(df[country_columns])
-            data_dict_price_user[country].update(country_df.to_dict())
+            country_df = zones_to_country(df[country_columns]) # Do the mean of zones prices of the country
+            data_dict_price_user[country].update(country_df.to_dict()) # Add for each country time as key and price as value
 
     return data_dict_price_user
 
@@ -67,7 +64,7 @@ def zones_to_country(df: pd.DataFrame) -> pd.Series:
     return df.mean(axis=1)
 
 
-# Exemple d'utilisation
+# Utilization example
 if __name__ == "__main__":
     # db_path = Path(__file__).parents[1] / "instance" / "database"
     db_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données")
@@ -81,7 +78,6 @@ if __name__ == "__main__":
     prod_users = load_database_prod_user(folder_path_prod, countries_list, start_year, end_year)
     price_users = load_database_price_user(folder_path_price, countries_list, start_year, end_year)
 
-    # Exemple d'accès aux données
     time = pd.to_datetime("2015-02-20 14:00:00")
     country = "FR"
     production_mode = "fossil_gas_MW"
