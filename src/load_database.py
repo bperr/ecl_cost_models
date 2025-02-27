@@ -30,7 +30,7 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
         data_dict_prod_user[country] = {} # Initialize the dictionary with countries
 
         # Store for each country, then for each production mode, the produced power every hour
-        for prod_mode in df.columns[1:]:
+        for prod_mode in df.columns:
             data_dict_prod_user[country][prod_mode] = df[prod_mode].to_dict()
 
     return data_dict_prod_user
