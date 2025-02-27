@@ -9,6 +9,8 @@ def read_user_hypothesis_data(file_path:Path) -> Dict[str, Dict[str, Dict[str, f
 
     :param file_path : Path to the Excel file containing user hypotheses.
     :return dict: A dictionary structured as {year: {country: {production_mode: cost}}}.
+    
+    NOUVELLE VERSION
     """
     # Load the Excel file, reading all sheets (each representing a year)
     xls = pd.ExcelFile(file_path)
