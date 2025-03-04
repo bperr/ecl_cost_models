@@ -1,103 +1,132 @@
-import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple
 
-def read_user_hypothesis_data(file_path: Path) -> Tuple[Dict[str, Dict[str, Dict[str, List[float]]]], List[str]]:
+import pandas as pd
+
+
+def read_price_hypothesis(file_path: Path, years: list[tuple[int, int]], countries_group: dict[str, list[str]],
+                          sectors_group: dict[str, list[str]], storages: list[str]) \
+        -> dict[tuple[int, int], dict[str, dict[str, list[float | None]]]]:
     """
-    Loads the user hypothesis Excel file and generates a dictionary containing 
-    the 0% and 100% threshold prices data structured as {year}{country}{production_mode: [price_0, price_100]}.
+    Loads the user hypothesis Excel file and generates a dictionary containing the 0% and 100% threshold prices data
+    structured as {year_group}{zone}{production_mode: [cons_price_100, cons_price_0, prod_price_0, prod_price_100]}.
     
     The function ensures:
-    - price_0 and price_100 exist.
-    - price_0 <= price_100.
-    Errors are collected and returned but the import continues.
+     - prod_price_0 and prod_price_100 exist.
+     - prod_price_0 <= prod_price_100.
+     - cons_price_0 and cons_price_100 exist (for storage only).
+     - cons_price_0 >= cons_price_100 (for storage only).
+     - cons_price_0 <= prod_price_0 (for storage only)
 
-    :param file_path: Path to the Excel file containing user hypotheses.
-    :return: A tuple (data_dict, errors_list), where:
-             - data_dict is {year: {country: {production_mode: [price_0, price_100]}}}
-             - errors_list contains all detected issues.
+    :param file_path: Path to the Excel file containing user prices hypotheses.
+    :param years: List of years group whose prices hypothesis must be read. A year group is start year and end year.
+    :param countries_group: Dictionary listing zone to whose prices hypothesis must be read.
+    :param sectors_group: Dictionary listing production mode whose prices hypothesis must be read.
+    :param storages: List of production mode that are actually storages.
+    :return: A dictionary of initial prices per main sector, zones, and years group.
     """
-    
-    # Load the Excel file, reading all sheets (each representing a year)
-    xls = pd.ExcelFile(file_path)
-    
+
     # Dictionary to store the data
     hypothesis_data_dict = {}
-    
-    # Store all detected errors
-    errors_list = []  
 
-    for year in xls.sheet_names:  # Each sheet represents a year
-        # Read data with the first row as the header
-        df = pd.read_excel(xls, sheet_name=year, header=0)  
+    for year_group in years:
+        start_year, end_year = year_group
+        sheet_name = f"{start_year}-{end_year}"
+        # Read data
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
 
-        # Check if the sheet is empty or incorrectly formatted
-        if df.empty or df.shape[1] < 2:
-            print(f"Warning: The sheet '{year}' in the user hypothesis file is empty or incorrectly formatted.")
-            continue
-        
         # Set the first column as index (production mode)
         df.set_index(df.columns[0], inplace=True)
         df = df.apply(pd.to_numeric, errors='coerce')  # Convert to float, NaN if conversion fails
 
+        zones = set(countries_group.keys())  # List of zones to get prices from
+        # Compare with dataframe columns
+        if not zones.issubset(df.columns):
+            missing_zones = zones - set(df.columns)
+            raise Exception(f"Hypothesis for zones {missing_zones} are missing in sheet '{sheet_name}'")
+
+        production_modes = set(sectors_group.keys())  # List of production modes to get prices from
+        # Compare with dataframe indexes
+        for prod_mode in production_modes:
+            if f"{prod_mode}_p0" not in df.index:
+                raise Exception(
+                    f"Minimum production price hypothesis for {prod_mode} is missing in sheet '{sheet_name}'")
+            if f"{prod_mode}_p100" not in df.index:
+                raise Exception(
+                    f"Maximum production price hypothesis for {prod_mode} is missing in sheet '{sheet_name}'")
+            if prod_mode in storages:  # This is not a production but a storage. It should have consumption prices too
+                if f"{prod_mode}_c0" not in df.index:
+                    raise Exception(
+                        f"Minimum consumption price hypothesis for {prod_mode} is missing in sheet '{sheet_name}'")
+                if f"{prod_mode}_c100" not in df.index:
+                    raise Exception(
+                        f"Maximum consumption price hypothesis for {prod_mode} is missing in sheet '{sheet_name}'")
+
+        # Store data in the dictionary
         year_data = {}
 
-        for country in df.columns:
-            country_data = {}
-            mode_names = list(df.index)
+        for zone in zones:
+            zone_data = {}
 
-            # Iterate through production modes, expecting two consecutive rows (mode_0 and mode_100)
-            for i in range(0, len(mode_names), 2):
-                mode_base = mode_names[i].rsplit("_", 1)[0]  
+            # Iterate through production modes
+            for prod_mode in production_modes:
+                price_p0 = df.loc[f"{prod_mode}_p0", zone]
+                price_p100 = df.loc[f"{prod_mode}_p100", zone]
 
-                if i + 1 < len(mode_names) and mode_names[i + 1] == mode_base + "_100": # Verify if there is well the same mode with "_0_ and "_100".
-                    price_0 = df.loc[mode_names[i], country]
-                    price_100 = df.loc[mode_names[i + 1], country]
+                # Check if both price_p0 and price_p100 exist
+                if pd.isna(price_p0) or pd.isna(price_p100):
+                    raise Exception(f"Missing price_p0 or price_p100 in '{sheet_name}' for {zone}, {prod_mode}")
+                # Check if price_0 <= price_100
+                if price_p0 > price_p100:
+                    raise ValueError(f"Invalid data in '{sheet_name}' for {zone}, {prod_mode}: "
+                                     f"price_p0 ({price_p0}) > price_p100 ({price_p100})")
 
-                    # Check if both price_0 and price_100 exist
-                    if pd.isna(price_0) or pd.isna(price_100):
-                        errors_list.append(
-                            f"ERROR: Missing price_0 or price_100 in {year} for {country}, {mode_base}."
-                        )
-
-                    # Check if price_0 <= price_100
-                    elif price_0 > price_100:
-                        errors_list.append(
-                            f"ERROR: Invalid data in {year} for {country}, {mode_base}: "
-                            f"price_0 ({price_0}) > price_100 ({price_100})."
-                        )
-
-                    # Store the values (even if incorrect, to preserve data structure)
-                    country_data[mode_base] = [price_0, price_100]
+                if prod_mode not in storages:
+                    # Store the values
+                    zone_data[prod_mode] = [None, None, price_p0, price_p100]
                 else:
-                    errors_list.append(f"Warning: Missing pair for {mode_names[i]} in {year}, {country}")
+                    price_c0 = df.loc[f"{prod_mode}_c0", zone]
+                    price_c100 = df.loc[f"{prod_mode}_c100", zone]
 
-            year_data[country] = country_data
+                    # Check if both price_c0 and price_c100 exist
+                    if pd.isna(price_c0) or pd.isna(price_c100):
+                        raise Exception(f"Missing price_c0 or price_c100 in '{sheet_name}' for {zone}, {prod_mode}")
+                    # Check if price_c0 >= price_c100
+                    if price_c0 < price_c100:
+                        raise ValueError(f"Invalid data in '{sheet_name}' for {zone}, {prod_mode}: "
+                                         f"price_c0 ({price_c0}) < price_c100 ({price_c100})")
+                    # Check if price_c0 <= price_p0
+                    if price_c0 > price_p0:
+                        raise ValueError(f"Invalid data in '{sheet_name}' for {zone}, {prod_mode}: "
+                                         f"price_c0 ({price_c0}) > price_p0 ({price_p0})")
+                    zone_data[prod_mode] = [price_c100, price_c0, price_p0, price_p100]
 
-        hypothesis_data_dict[year] = year_data
+            year_data[zone] = zone_data
 
-    return hypothesis_data_dict, errors_list
+        hypothesis_data_dict[year_group] = year_data
+
+    return hypothesis_data_dict
 
 
 # Example usage
 if __name__ == "__main__":
     file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD User\Hypothesis User.xlsx")
-    
-    user_hypotheses, errors = read_user_hypothesis_data(file_path)
+    years_list = [(2015, 2016), (2017, 2017)]
+    zones_to_countries = {'FR': ["FR"], 'BRI': ["GB", "IE"]}
+    main_sectors_to_detailed_sectors = {'RES': ['solar', 'wind_onshore'], 'Fossil': ['fossil_gas,fossil_coal']}
+    storage_list = []
 
-    # Display detected errors
-    if errors:
-        print("\n--- Errors Detected ---")
-        for error in errors:
-            print(error)
+    user_hypotheses = read_price_hypothesis(file_path, years_list, zones_to_countries, main_sectors_to_detailed_sectors,
+                                            storage_list)
 
     # Example of accessing data
-    year = "2017"
-    country = "FR"
-    production_mode = "fossil_gas"
+    year_range = (2015, 2016)
+    zone = "FR"
+    production_mode = "Fossil"
 
     try:
-        value = user_hypotheses[year][country][production_mode]
-        print(f"\nPrices in {year} for {production_mode} in {country}: price_0 = {value[0]} €, price_100 = {value[1]} €")
+        value = user_hypotheses[year_range][zone][production_mode]
+        print(
+            f"\nPrices in {year_range} for {production_mode} in {zone}: "
+            f"price_c100 = {value[0]} €, price_c0 = {value[1]}€, price_p0 = {value[2]} €, price_p100 = {value[3]}€")
     except KeyError:
         print("Data not found, please check your inputs.")
