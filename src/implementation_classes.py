@@ -3,7 +3,7 @@ class Sector:
     Class that gives the information of each sector of production (gas, nuclear, wind offshore,...)
     """
 
-    def __init__(self, production: int, production_date: str, price: float):
+    def __init__(self, production: int, production_date: str, price_min: float, price_max: float, name: str):
         """
         :param production: current production capacity in MW
         :param production_date: corresponding day and hour in format dd/mm/yyyy hh:mm
@@ -11,7 +11,9 @@ class Sector:
         """
         self._production = production  # in MW
         self._production_date = production_date
-        self._price = price  # €/MWh
+        self._price_min = price_min  # €/MWh
+        self._price_max = price_max  # €/MWh
+        self._name = name
 
     def get_production_value(self):
         """
@@ -34,17 +36,18 @@ class Sector:
 
 class Country:
     """
-    Class with a list of the countries studied and their sectors of production
+    Class with the countries studied and their sectors of production
     """
 
-    def __init__(self, type, sectors: list):
+    def __init__(self, sectors: list, name : str):
         """
         :param type: TO FILL
         :param sectors: List of production sectors used in the country
         """
         self._sectors = sectors
+        self._name = name
 
-    def add_sector(self, sector: str):
+    def add_sector(self, sector: object):
         """
         Add a sector to the list of country sectors.
         :param sector: Sector to add to the country.
@@ -57,7 +60,7 @@ class Interco:
     Class that defines the interconnection between two countries and the production exchanged
     """
 
-    def __init__(self, from_country: str, to_country: str, production_transferred: int, transfer_date: str,
+    def __init__(self, from_country: object, to_country: object, production_transferred: int, transfer_date: str,
                  is_max: bool):
         """
         :param from_country: country that sends the production to the other
@@ -88,7 +91,7 @@ class Interco:
         """
         :return: The production that was effectively sent from a country to another in MW
         """
-        return self._capacity
+        return self._production_transferred
 
     def get_transfer_date(self):
         """
@@ -125,12 +128,12 @@ class Price:
         return self._price
 
 
-class Storage:  # In pause for instance, because of the issue with the time step
+class Storage:  # In pause, because of the issue with the time step
     """
-    TO FILL
+    Class that gives the storage capacity of a given country (STEP only).
     """
 
-    def __init__(self, country: str, capacity_date: str, flow: int):
+    def __init__(self, country: object, capacity_date: str, flow: int, name: str):
         """
         :param country: country in which the capacity is measured
         :param capacity_date: week of the year at which the capacity is measured
@@ -139,6 +142,7 @@ class Storage:  # In pause for instance, because of the issue with the time step
         self._country = country
         self._capacity_date = capacity_date
         self._flow = flow  # MWh
+        self._name = name
 
     def get_storage_country(self):
         """
