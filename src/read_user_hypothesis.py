@@ -69,8 +69,8 @@ def read_price_hypothesis(file_path: Path, years: list[tuple[int, int]], countri
 
             # Iterate through production modes
             for prod_mode in production_modes:
-                price_p0 = df.loc[f"{prod_mode}_p0", zone]
-                price_p100 = df.loc[f"{prod_mode}_p100", zone]
+                price_p0 = float(df.loc[f"{prod_mode}_p0", zone])
+                price_p100 = float(df.loc[f"{prod_mode}_p100", zone])
 
                 # Check if both price_p0 and price_p100 exist
                 if pd.isna(price_p0) or pd.isna(price_p100):
@@ -84,8 +84,8 @@ def read_price_hypothesis(file_path: Path, years: list[tuple[int, int]], countri
                     # Store the values
                     zone_data[prod_mode] = [None, None, price_p0, price_p100]
                 else:
-                    price_c0 = df.loc[f"{prod_mode}_c0", zone]
-                    price_c100 = df.loc[f"{prod_mode}_c100", zone]
+                    price_c0 = float(df.loc[f"{prod_mode}_c0", zone])
+                    price_c100 = float(df.loc[f"{prod_mode}_c100", zone])
 
                     # Check if both price_c0 and price_c100 exist
                     if pd.isna(price_c0) or pd.isna(price_c100):
@@ -109,19 +109,20 @@ def read_price_hypothesis(file_path: Path, years: list[tuple[int, int]], countri
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD User\Hypothesis User.xlsx")
-    years_list = [(2015, 2016), (2017, 2017)]
-    zones_to_countries = {'FR': ["FR"], 'BRI': ["GB", "IE"]}
-    main_sectors_to_detailed_sectors = {'RES': ['solar', 'wind_onshore'], 'Fossil': ['fossil_gas,fossil_coal']}
-    storage_list = []
+    file_path = Path("C:/Users/b.perreyon/Downloads/Hypothesis User v2.xlsx")
+    years_list = [(2015, 2015), (2016, 2018)]
+    zones_to_countries = {'FR': ["FR"], 'GB': ["GB"]}
+    main_sectors_to_detailed_sectors = {'biomass': ['biomass'], 'fossil_gas': ['fossil_gas'],
+                                        'hydro_pumped_storage': ["hydro_pumped_storage"]}
+    storage_list = ["hydro_pumped_storage"]
 
     user_hypotheses = read_price_hypothesis(file_path, years_list, zones_to_countries, main_sectors_to_detailed_sectors,
                                             storage_list)
 
     # Example of accessing data
-    year_range = (2015, 2016)
+    year_range = (2015, 2015)
     zone = "FR"
-    production_mode = "Fossil"
+    production_mode = "hydro_pumped_storage"
 
     try:
         value = user_hypotheses[year_range][zone][production_mode]

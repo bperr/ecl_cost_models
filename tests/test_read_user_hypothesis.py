@@ -232,7 +232,7 @@ def test_read_price_hypothesis_raise_error_if_p0_is_greater_than_p100(price_setu
         read_price_hypothesis(fake_file_path, years, zone_to_countries, sectors_group, storages)
 
     # Check error
-    assert error.value.args[0] == "Invalid data in '2015-2016' for FR, Fossil: price_p0 (25) > price_p100 (20)"
+    assert error.value.args[0] == "Invalid data in '2015-2016' for FR, Fossil: price_p0 (25.0) > price_p100 (20.0)"
 
 
 def test_read_price_hypothesis_raise_error_if_c0_is_lower_than_c100(price_setup):
@@ -254,7 +254,7 @@ def test_read_price_hypothesis_raise_error_if_c0_is_lower_than_c100(price_setup)
         read_price_hypothesis(fake_file_path, years, zone_to_countries, sectors_group, storages)
 
     # Check error
-    assert error.value.args[0] == "Invalid data in '2015-2016' for FR, Storage: price_c0 (2) < price_c100 (5)"
+    assert error.value.args[0] == "Invalid data in '2015-2016' for FR, Storage: price_c0 (2.0) < price_c100 (5.0)"
 
 
 def test_read_price_hypothesis_raise_error_if_c0_is_greater_than_p0(price_setup):
@@ -276,4 +276,4 @@ def test_read_price_hypothesis_raise_error_if_c0_is_greater_than_p0(price_setup)
         read_price_hypothesis(fake_file_path, years, zone_to_countries, sectors_group, storages)
 
     # Check error
-    assert error.value.args[0] == "Invalid data in '2015-2016' for FR, Storage: price_c0 (15) > price_p0 (12)"
+    assert error.value.args[0] == "Invalid data in '2015-2016' for FR, Storage: price_c0 (15.0) > price_p0 (12.0)"
