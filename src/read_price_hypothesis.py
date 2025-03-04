@@ -1,10 +1,11 @@
 from pathlib import Path
-
 import pandas as pd
 
-
-def read_price_hypothesis(file_path: Path, years: list[tuple[int, int]], countries_group: dict[str, list[str]],
-                          sectors_group: dict[str, list[str]], storages: list[str]) \
+def read_price_hypothesis(file_path: Path, 
+                          years: list[tuple[int, int]], 
+                          countries_group: dict[str, list[str]],
+                          sectors_group: dict[str, list[str]], 
+                          storages: list[str]) \
         -> dict[tuple[int, int], dict[str, dict[str, list[float | None]]]]:
     """
     Loads the user hypothesis Excel file and generates a dictionary containing the 0% and 100% threshold prices data
