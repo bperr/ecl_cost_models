@@ -17,5 +17,28 @@ def read_user_inputs(file_path: Path) -> tuple[
     :return storages: List of production mode that are actually storages.
     """
     
-    return()
+    # Load the Excel file
+    xls = pd.ExcelFile(file_path)
+    
+    # Extract years from the 'Years' sheet
+    df_years = xls.parse('Years')
+    years = list(zip(df_years['Year min'], df_years['Year max']))
 
+    # Extract country groupings from the 'Zones' sheet
+    df_zones = xls.parse('Zones')
+    countries_group = df_zones.groupby('Zone name')['Country name'].apply(list).to_dict()
+
+    # Extract sector groupings from the 'Sectors' sheet
+    df_sectors = xls.parse('Sectors')
+    sectors_group = df_sectors.groupby('Main sector')['Detailed sector'].apply(list).to_dict()
+
+    # Extract storage-related production modes from the 'Clustering' sheet
+    df_clustering = xls.parse('Clustering')
+    storages = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
+    
+    return(years, countries_group, sectors_group, storages)
+
+# Example usage
+if __name__ == "__main__":
+    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD User\User_inputs.xlsx")
+    years, countries_group, sectors_group, storages = read_user_inputs(file_path)
