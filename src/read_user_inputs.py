@@ -6,7 +6,6 @@ def read_user_inputs(file_path: Path) -> tuple[
         dict[str, list[str]],  #countries_group
         dict[str, list[str]], #sectors_group
         list[str]]: #storages
-    
     """
     Loads the user inputs Excel file and returns the parameters to enter in the read_price_hypothesis function.
     
@@ -16,29 +15,55 @@ def read_user_inputs(file_path: Path) -> tuple[
     :return sectors_group: Dictionary listing production mode whose prices hypothesis must be read.
     :return storages: List of production mode that are actually storages.
     """
-    
-    # Load the Excel file
-    xls = pd.ExcelFile(file_path)
-    
-    # Extract years from the 'Years' sheet
-    df_years = xls.parse('Years')
-    years = list(zip(df_years['Year min'], df_years['Year max']))
 
-    # Extract country groupings from the 'Zones' sheet
-    df_zones = xls.parse('Zones')
-    countries_group = df_zones.groupby('Zone name')['Country name'].apply(list).to_dict()
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
 
-    # Extract sector groupings from the 'Sectors' sheet
-    df_sectors = xls.parse('Sectors')
-    sectors_group = df_sectors.groupby('Main sector')['Detailed sector'].apply(list).to_dict()
+    try:
+        # Load the Excel file
+        xls = pd.ExcelFile(file_path)
 
-    # Extract storage-related production modes from the 'Clustering' sheet
-    df_clustering = xls.parse('Clustering')
-    storages = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
-    
-    return(years, countries_group, sectors_group, storages)
+        # Column names validation before running #
+        def check_columns(df: pd.DataFrame, required_columns: set, sheet_name: str):
+            """ Checks if the required columns exist in the given sheet. """
+            missing_columns = required_columns - set(df.columns)
+            if missing_columns:
+                raise ValueError(f"Missing columns in '{sheet_name}' sheet: {missing_columns}")
+
+        # --- Extract years ---
+        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int})
+        check_columns(df_years, {'Year min', 'Year max'}, 'Years')
+
+            ## Data validation ##
+        if (df_years['Year min'] > df_years['Year max']).any():
+            raise ValueError("Invalid data in 'Years' sheet: 'Year min' must be <= 'Year max' for all rows.")
+        
+        years = list(zip(df_years['Year min'], df_years['Year max']))
+
+        # --- Extract country groups ---
+        df_zones = xls.parse('Zones', dtype=str)
+        check_columns(df_zones, {'Zone', 'Node'}, 'Zones')
+        countries_group = df_zones.groupby('Zone')['Node'].apply(list).to_dict()
+
+        #--- Extract sector groups ---
+        df_sectors = xls.parse('Sectors', dtype=str)
+        check_columns(df_sectors, {'Main sector', 'Detailed sector'}, 'Sectors')
+        sectors_group = df_sectors.groupby('Main sector')['Detailed sector'].apply(list).to_dict()
+
+        # --- Extract storage-related production modes ---
+        df_clustering = xls.parse('Clustering', dtype={'Is storage': float})
+        check_columns(df_clustering, {'Main sector', 'Is storage'}, 'Clustering')
+        storages = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
+
+        return years, countries_group, sectors_group, storages
+
+    except Exception as e:
+        raise ValueError(f"Error while reading the Excel file: {e}")
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\Code\Code BDD User\User_inputs.xlsx")
-    years, countries_group, sectors_group, storages = read_user_inputs(file_path)
+    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\ecl_cost_models\Templates\User_inputs.xlsx")
+    try:
+        years, countries_group, sectors_group, storages = read_user_inputs(file_path)
+    except Exception as e:
+        print(f"Error: {e}")
