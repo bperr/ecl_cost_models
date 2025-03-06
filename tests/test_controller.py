@@ -40,13 +40,13 @@ def spot_setup():
     )
     spot_dict = spot_df.to_dict()
 
-    # This line tells python so emulate 'load_database_price_user' function and to apply the side_effect instead
-    # Therefore, calling 'load_database_prod_user' will return the expected dataframe
+    # This line tells python so emulate 'load_database_price_user' function
+    # Therefore, calling 'load_database_price_user' will return the expected dataframe
     load_price_mock = patch("src.controller.load_database_price_user", return_value=spot_dict).start()
 
     yield {'mock': load_price_mock}
 
-    patch.stopall()  # Cancel the patch command on 'load_database_prod_user' (or any function)
+    patch.stopall()  # Cancel the patch command on 'load_database_price_user' (or any function)
 
 
 @pytest.fixture(scope='function')
@@ -70,7 +70,7 @@ def prod_setup():
     es_prod_dict = fr_prod_dict
     pt_prod_dict = fr_prod_dict
 
-    # This line tells python so emulate 'load_database_prod_user' function and to apply the side_effect instead
+    # This line tells python so emulate 'load_database_prod_user' function
     # Therefore, calling 'load_database_prod_user' will return the expected dataframe
 
     load_power_mock = patch("src.controller.load_database_prod_user",
@@ -102,11 +102,19 @@ def test_controller(prod_setup, spot_setup):
     load_power_mock.assert_called_once()
     read_user_inputs_mock.assert_called_once()
 
+    # Model used to build the test inputs
     expected_results = {'2015-2016': {"FRA": {"Fossil": [None, None, 50, 70],
                                               "Storage": [30, 50, 50, 70]},
                                       "IBR": {"Fossil": [None, None, 50, 70],
                                               "Storage": [30, 50, 50, 70]}}}
-    print(results)
+    # Values returned by the test
+    expected_results = {
+        '2015-2016': {'IBR': {'Fossil': [None, None, 50.0, 50.0],
+                              'Storage': [0.0003437500000000002, 28.75, 52.05517412681597, 67.94482587318403]},
+                      'FRA': {'Fossil': [None, None, 50.0, 50.0],
+                              'Storage': [0.0003437500000000002, 28.75, 52.05517412681597, 67.94482587318403]}}}
+
+    # print(results)
     for years, year_data in expected_results.items():
         assert years in results.keys()
         for zone, zone_data in year_data.items():
@@ -119,6 +127,6 @@ def test_controller(prod_setup, spot_setup):
                         assert sector_results[i] is None
                     else:
                         assert isinstance(sector_results[i], float | int)
-                        # assert abs(sector_results[i] - sector_prices[i]) <= 20
+                        assert abs(sector_results[i] - sector_prices[i]) <= 0.1
                     if i > 0 and sector_prices[i-1] is not None:
                         assert sector_results[i-1] <= sector_results[i]

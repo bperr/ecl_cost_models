@@ -2,6 +2,7 @@ import numpy as np
 from pandas import Timestamp
 from pathlib import Path
 from scipy.optimize import minimize
+import warnings
 
 from src.load_database import load_database_prod_user, load_database_price_user
 
@@ -87,8 +88,8 @@ class Controller:
         :param consumption_mode: If True only the negative powers are considered. Else only the positive powers are.
         :return: {Time step: {"price": price, "power factor": power factor, "power": power}
         """
+        # {time_step: power} associated to the input group of years, countries nad sectors
         power_series = dict()
-
         for country in countries:
             if country in self.historical_powers.keys():
                 country_data = self.historical_powers[country]
@@ -101,10 +102,11 @@ class Controller:
                                     power_series[time_step] = 0
                                 power_series[time_step] += sector_data[time_step]
                     else:
-                        print(f"Warning: {sector} not in {country} data")
-                else:
-                    print(f"Warning: {country} not in historical power data")
+                        warnings.warn(f"{sector} not in {country} data")
+            else:
+                warnings.warn(f"{country} not in historical power data")
 
+        # {time_step: price, power factor, power} associated to the input group of years, countries nad sectors
         series = dict()
         if consumption_mode:
             power_rating = min(0, min(power_series.values()))  # consumption rating <= 0
@@ -117,9 +119,9 @@ class Controller:
                 if time_step in self.historical_prices[country]:
                     prices.append(self.historical_prices[country][time_step])
             if len(prices) == 0:
-                print(f"Warning: price for {time_step} is not provided.")
+                warnings.warn(f"price for {time_step} is not provided.")
             power = power_series[time_step]
-            if power * power_rating >= 0:
+            if (power_rating > 0 and power >= 0) or (power_rating < 0 and power <= 0):
                 series[time_step] = {"price": sum(prices)/len(prices),
                                      "power factor": power/power_rating,
                                      "power": power}
@@ -209,16 +211,18 @@ class Controller:
                         assert isinstance(consumption_price_full_power, float | int)
                         assert isinstance(consumption_price_no_power, float | int)
                         if consumption_price_no_power > production_price_no_power:
-                            print(f"Warning: {year_min} to {year_max} | {zone} | {main_sector}: "
+                            print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
                                   f"consumption_price_no_power = {consumption_price_no_power} "
-                                  f"> {production_price_no_power} = production_price_no_power")
+                                  f"> {production_price_no_power} = production_price_no_power\n"
+                                  f"Both are replaced by their average")
                             consumption_price_no_power = production_price_no_power \
                                 = (consumption_price_no_power + production_price_no_power) / 2
                         if consumption_price_full_power > consumption_price_no_power:
                             consumption_price_full_power = consumption_price_no_power
-                            print(f"Warning: {year_min} to {year_max} | {zone} | {main_sector}: "
+                            print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
                                   f"consumption_price_full_power = {consumption_price_full_power} "
-                                  f"> {consumption_price_no_power} = consumption_price_no_power")
+                                  f"> {consumption_price_no_power} = consumption_price_no_power\n"
+                                  f"consumption_price_full_power is replaced by consumption_price_no_power")
 
                     assert isinstance(production_price_no_power, float | int)
                     assert isinstance(production_price_full_power, float | int)
@@ -226,7 +230,8 @@ class Controller:
                         production_price_full_power = production_price_no_power
                         print(f"Warning: {year_min} to {year_max} | {zone} | {main_sector}: "
                               f"production_price_no_power = {production_price_no_power} "
-                              f"> {production_price_full_power} = production_price_full_power")
+                              f"> {production_price_full_power} = production_price_full_power\n"
+                              f"production_price_full_power is replaced by production_price_no_power")
                     results[years_key][zone][main_sector] = [consumption_price_full_power,
                                                              consumption_price_no_power,
                                                              production_price_no_power,
