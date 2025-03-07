@@ -71,7 +71,7 @@ def read_user_inputs(file_path: Path) -> tuple[
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\ecl_cost_models\Templates\User_inputs.xlsx")
+    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\ecl_cost_models\Templates\User_inputs_Test.xlsx")
     try:
         years, countries_group, sectors_group, storages = read_user_inputs(file_path)
     except Exception as e:
