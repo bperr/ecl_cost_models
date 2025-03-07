@@ -1,11 +1,12 @@
 from pathlib import Path
 import pandas as pd
+import warnings
 
 def read_user_inputs(file_path: Path) -> tuple[
         list[tuple[int, int]], #years
         dict[str, list[str]],  #countries_group
-        dict[str, list[str]], #sectors_group
-        list[str]]: #storages
+        dict[str, list[str]],  #sectors_group
+        list[str]]:            #storages
     """
     Loads the user inputs Excel file and returns the parameters to enter in the read_price_hypothesis function.
     
@@ -54,7 +55,15 @@ def read_user_inputs(file_path: Path) -> tuple[
         df_clustering = xls.parse('Clustering', dtype={'Is storage': float})
         check_columns(df_clustering, {'Main sector', 'Is storage'}, 'Clustering')
         storages = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
-
+        
+        # --- Validation: Check if all zones & main sectors in Clustering exist in other sheets ---
+        unused_main_sectors = set(df_clustering['Main sector'].dropna()) - set(sectors_group.keys())
+        unused_zones = set(df_clustering['Zone'].dropna()) - set(countries_group.keys())
+        if unused_main_sectors:
+            warnings.warn(f"Warning: The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': {unused_main_sectors}")
+        if unused_zones:
+            warnings.warn(f"Warning: The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}")   
+        
         return years, countries_group, sectors_group, storages
 
     except Exception as e:
