@@ -59,10 +59,10 @@ def read_user_inputs(file_path: Path) -> tuple[
         # --- Validation: Check if all zones & main sectors in Clustering exist in other sheets ---
         unused_main_sectors = set(df_clustering['Main sector'].dropna()) - set(sectors_group.keys())
         unused_zones = set(df_clustering['Zone'].dropna()) - set(countries_group.keys())
-        if unused_main_sectors:
-            warnings.warn(f"Warning: The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': {unused_main_sectors}")
-        if unused_zones:
-            warnings.warn(f"Warning: The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}")   
+        if len(unused_main_sectors) > 0:
+            warnings.warn(f"The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': {unused_main_sectors}", stacklevel = 2)
+        if len(unused_zones) > 0:
+            warnings.warn(f"The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}", stacklevel = 2)   
         
         return years, countries_group, sectors_group, storages
 
