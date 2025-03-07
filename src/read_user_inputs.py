@@ -35,7 +35,7 @@ def read_user_inputs(file_path: Path) -> tuple[
         df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int})
         check_columns(df_years, {'Year min', 'Year max'}, 'Years')
 
-            ## Data validation ##
+        ## Data validation ##
         if (df_years['Year min'] > df_years['Year max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'Year min' must be <= 'Year max' for all rows.")
         
@@ -71,7 +71,7 @@ def read_user_inputs(file_path: Path) -> tuple[
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path(r"D:\ECL\4a\Option\Projet SuperGrid\ecl_cost_models\Templates\User_inputs_Test.xlsx")
+    file_path = Path("C:/Users/b.perreyon/Documents/ECL cost models/ecl_cost_models/Templates/User_inputs_Test.xlsx")
     try:
         years, countries_group, sectors_group, storages = read_user_inputs(file_path)
     except Exception as e:

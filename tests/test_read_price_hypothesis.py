@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.read_user_hypothesis import read_price_hypothesis
+from src.read_price_hypothesis import read_price_hypothesis
 
 
 @pytest.fixture(scope='function')
