@@ -1,10 +1,11 @@
+import warnings
+from pathlib import Path
+
 import numpy as np
 from pandas import Timestamp
-from pathlib import Path
 from scipy.optimize import minimize
-import warnings
 
-from src.load_database import load_database_prod_user, load_database_price_user
+from src.load_database import load_database_price_user, load_database_prod_user
 
 
 class Controller:
@@ -88,7 +89,7 @@ class Controller:
         :param consumption_mode: If True only the negative powers are considered. Else only the positive powers are.
         :return: {Time step: {"price": price, "power factor": power factor, "power": power}
         """
-        # {time_step: power} associated to the input group of years, countries nad sectors
+        # {time_step: power} associated to the input group of years, countries and sectors
         power_series = dict()
         for country in countries:
             if country in self.historical_powers.keys():
@@ -106,12 +107,11 @@ class Controller:
             else:
                 warnings.warn(f"{country} not in historical power data")
 
-        # {time_step: price, power factor, power} associated to the input group of years, countries nad sectors
+        # {time_step: price, power factor, power} associated to the input group of years, countries and sectors
         series = dict()
-        if consumption_mode:
-            power_rating = min(0, min(power_series.values()))  # consumption rating <= 0
-        else:
-            power_rating = max(0, max(power_series.values()))  # production rating >= 0
+        power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
+        assert power_rating > 0
+
         for time_step in power_series.keys():
             prices = list()
             for country in countries:
@@ -119,11 +119,12 @@ class Controller:
                 if time_step in self.historical_prices[country]:
                     prices.append(self.historical_prices[country][time_step])
             if len(prices) == 0:
-                warnings.warn(f"price for {time_step} is not provided.")
+                warnings.warn(f"price for {time_step} is not provided. Time step is skipped")
+                continue
             power = power_series[time_step]
-            if (power_rating > 0 and power >= 0) or (power_rating < 0 and power <= 0):
-                series[time_step] = {"price": sum(prices)/len(prices),
-                                     "power factor": power/power_rating,
+            if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
+                series[time_step] = {"price": sum(prices) / len(prices),
+                                     "power factor": power / power_rating,
                                      "power": power}
         return series
 
@@ -153,8 +154,11 @@ class Controller:
                 errors.append(abs(expected_power_factor - power_factor_model))
             return sum(errors) / len(errors)
 
-        res = minimize(error_function, initial_prices, method='nelder-mead',
+        res = minimize(error_function, initial_prices, method="nelder-mead",
                        options={'xatol': 1e-8, 'disp': True})
+
+        # FIXME: Scipy minimize can be successful but return incorrect results (res.fun >> tolerance (1e-8))
+        #  It seems to happen when min and max initial_prices are close ? (to investigate and to fix)
         return float(res.x[0]), float(res.x[1])
 
     def _export_results(self, results: dict):
