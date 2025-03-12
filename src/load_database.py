@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def load_database_prod_user(folder_path: Path, country_list: list[str], start_year: int, end_year: int) -> dict:
+def load_database_prod_user(folder_path: Path, country_list: list[str], years: list[int]) -> dict:
     if end_year < start_year:
         raise ValueError("End year cannot be before start year")
 
@@ -23,7 +23,12 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
         sheet_name = file_name[:-5]  # filename without .xlsx
         df = pd.read_excel(folder_path / f"{file_name}", sheet_name=sheet_name, header=0)
 
-        df = df[(df["Début de l'heure"].dt.year >= start_year) & (df["Début de l'heure"].dt.year <= end_year)] # Filter only the years wanted
+        # If self.years has only one year, we use it to filter the excel sheet
+        if years[0]==years[1]:
+            df = df[df["Début de l'heure"].dt.year == years[0]]  # Filter only on the specific year
+        else:
+            # If there are several years, we include all of them
+            df = df[df["Début de l'heure"].dt.year.isin(years)]
 
         df.set_index(df.columns[0], inplace=True)  # First column (time) as index and Column name is also kept as index name
 
