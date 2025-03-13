@@ -48,7 +48,7 @@ def add_missing_dates_prod(production: dict, countries_list: list[str], start_ye
 
 
                 if current_date == end_date :
-                    for country in countries_list: 
+                    for power_plant in power_plant_list: 
                         production[country][power_plant][current_date] = production[country][power_plant][previous_date]
                 
                 else:
