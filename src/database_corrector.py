@@ -33,10 +33,15 @@ def add_missing_dates_prod(production: dict, countries_list: list[str], start_ye
             
             if current_date not in production[country][first_power_plant]: #Check if the date is missing in the database
                 
-                if current_date == start_date or current_date == end_date : #Averaging the previous and the next values is not possible for limit values
-                
+                if current_date == start_date : #Averaging the previous and the next values is not possible for limit values
                     for power_plant in power_plant_list: #If a date is missing for the first power plant, it is also missing for the others
                          production[country][power_plant][current_date] = 0
+
+                if current_date == end_date :
+                    for country in countries_list: 
+                        production[country][power_plant][current_date] = production[country][power_plant][previous_date]
+
+                
                 
                 else:
                     
@@ -69,9 +74,14 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
         
         if current_date not in price[first_country]: #Check if the date is missing in the database
         
-            if current_date == start_date or current_date == end_date : #Averaging the previous and the next values is not possible for limit values
+            if current_date == start_date : #Averaging the previous and the next values is not possible for limit values
                 for country in countries_list: #If a date is missing for the first country, it is also missing for the others
                     price[country][current_date] = 0
+
+            if current_date == end_date :
+                for country in countries_list: 
+                    price[country][current_date] = price[country][previous_date]
+
                     
             else: 
                 next_date = current_date + pd.Timedelta(hours=1)
