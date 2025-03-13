@@ -28,25 +28,30 @@ def add_missing_dates_prod(production: dict, countries_list: list[str], start_ye
         first_power_plant = power_plant_list[0]
         current_date = start_date
     
-        # Loop over all the dates in the specified range
-        while current_date <= end_date:
+        
+        while current_date <= end_date: # Loop over all the dates in the specified range
             
             if current_date not in production[country][first_power_plant]: #Check if the date is missing in the database
+
+                next_date = current_date + pd.Timedelta(hours=1)
+                previous_date = current_date - pd.Timedelta(hours=1)
                 
                 if current_date == start_date : #Averaging the previous and the next values is not possible for limit values
-                    for power_plant in power_plant_list: #If a date is missing for the first power plant, it is also missing for the others
-                         production[country][power_plant][current_date] = 0
+
+                    if next_date in production[country][first_power_plant]: 
+                        for power_plant in power_plant_list: #If a date is missing for the first power plant, it is also missing for the others
+                            production[country][power_plant][current_date] = production[country][power_plant][next_date]
+
+                    else : #Several dates are missing in a row from the start date
+                        for power_plant in power_plant_list: 
+                            production[country][power_plant][current_date] = 0
+
 
                 if current_date == end_date :
                     for country in countries_list: 
                         production[country][power_plant][current_date] = production[country][power_plant][previous_date]
-
-                
                 
                 else:
-                    
-                    next_date = current_date + pd.Timedelta(hours=1)
-                    previous_date = current_date - pd.Timedelta(hours=1)
                     
                     if next_date in production[country][first_power_plant]:  #Check if creating a power value by averaging the previous and the next values is possible
                         
@@ -73,10 +78,19 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
     while current_date <= end_date:
         
         if current_date not in price[first_country]: #Check if the date is missing in the database
+
+            next_date = current_date + pd.Timedelta(hours=1)
+            previous_date = current_date - pd.Timedelta(hours=1)
         
             if current_date == start_date : #Averaging the previous and the next values is not possible for limit values
-                for country in countries_list: #If a date is missing for the first country, it is also missing for the others
-                    price[country][current_date] = 0
+
+                if next_date in price[country]: 
+                    for country in countries_list: #If a date is missing for the first power plant, it is also missing for the others
+                        price[country][current_date] = price[country][next_date]
+
+                else : #Several dates are missing in a row from the start date
+                    for country in countries_list: 
+                        price[country][current_date] = 0
 
             if current_date == end_date :
                 for country in countries_list: 
@@ -84,9 +98,7 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
 
                     
             else: 
-                next_date = current_date + pd.Timedelta(hours=1)
-                previous_date = current_date - pd.Timedelta(hours=1)
-            
+                
                 if next_date in price[first_country]:  #Check if creating a price value by averaging the previous and the next values is possible
                 
                     for country in countries_list:
@@ -107,7 +119,7 @@ if __name__ == "__main__":
     db_path = Path(r"C:\Users\trist\OneDrive\Documents\ECL3A\Option énergie\Projet d'option\Code\database")
     folder_path_prod = db_path / "Production par pays et par filière 2015-2019"
     folder_path_price = db_path / "Prix spot par an et par zone 2015-2019"
-    countries = ['AT', 'BE', 'CH']
+    countries = ['AT','BE','CH']
     #'AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR','GB', 'GR', 'HU', 'IT', 'LT', 'NL', 'NO', 'PL', 'PT', 'RO','SE', 'SI', 'SK'
     start_year, end_year = 2015, 2015  # years of production database
 
