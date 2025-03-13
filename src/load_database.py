@@ -21,7 +21,7 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
     for country in country_list:
         file_name = file_name_template.format(country)  # Replace {} by the country code
                 
-        df = pd.Dataframe() # Initialize dataframe df
+        df = pd.DataFrame() # Initialize dataframe df
         
         for year in range(start_year, end_year + 1):
             sheet_name = str(year)
