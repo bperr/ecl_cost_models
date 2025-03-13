@@ -84,7 +84,7 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
         
             if current_date == start_date : #Averaging the previous and the next values is not possible for limit values
 
-                if next_date in price[country]: 
+                if next_date in price[first_country]: 
                     for country in countries_list: #If a date is missing for the first power plant, it is also missing for the others
                         price[country][current_date] = price[country][next_date]
 
