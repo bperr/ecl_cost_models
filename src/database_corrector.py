@@ -84,7 +84,7 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
                 else:
                     # If the next price value is missing, the previous price value is copied
                     for country in countries_list:
-                        price[country][current_date] = production[country][previous_date]
+                        price[country][current_date] = price[country][previous_date]
             
         current_date += pd.Timedelta(hours=1)  # Iteration process
         
