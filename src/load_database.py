@@ -21,17 +21,14 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
     for country in country_list:
         file_name = file_name_template.format(country)  # Replace {} by the country code
                 
-        df = 0 # Initialize variable df
+        df = pd.Dataframe() # Initialize dataframe df
         
         for year in range(start_year, end_year + 1):
-            sheet_name = "{}".format(year)
+            sheet_name = str(year)
             
             df_year = pd.read_excel(folder_path / file_name, sheet_name=sheet_name, header=0, index_col=0) # index_col = 0 to set column time as index
             
-            if year == start_year : 
-                df = df_year
-            else :
-                df = pd.concat([df, df_year])
+            df = pd.concat([df, df_year])
        
         data_dict_prod_user[country] = {} # Initialize the dictionary with countries
     
