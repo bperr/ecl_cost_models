@@ -110,9 +110,10 @@ def read_price_hypothesis(file_path: Path,
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path("C:/Users/b.perreyon/Downloads/Hypothesis User v2.xlsx")
+    # file_path = Path("C:/Users/b.perreyon/Downloads/Hypothesis User v2.xlsx")
+    file_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données\Hypothèses de prix Utilisateurs\Prices_inputs.xlsx")
     years_list = [(2015, 2015), (2016, 2018)]
-    zones_to_countries = {'FR': ["FR"], 'GB': ["GB"]}
+    zones_to_countries = {'FRA': ["FR"], 'BRI': ["GB"]}
     main_sectors_to_detailed_sectors = {'biomass': ['biomass'], 'fossil_gas': ['fossil_gas'],
                                         'hydro_pumped_storage': ["hydro_pumped_storage"]}
     storage_list = ["hydro_pumped_storage"]
@@ -122,7 +123,7 @@ if __name__ == "__main__":
 
     # Example of accessing data
     year_range = (2015, 2015)
-    zone = "FR"
+    zone = "FRA"
     production_mode = "hydro_pumped_storage"
 
     try:
