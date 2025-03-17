@@ -172,34 +172,34 @@ class Controller:
         price model for each year range x zone x main sector.
         """
 
+        dfs = {}
+
         for year, zones_data in results.items():
             year_str = str(year)  
-    
+        
             data = []
             all_sectors = set()  
-    
-            
+        
             for zone_info in zones_data.values():
                 all_sectors.update(zone_info.keys())
-    
+        
             all_sectors = sorted(all_sectors)
             columns = ['Zone', 'Price Type'] + list(all_sectors)
-    
-            for zone, sectors in zones_data.items():
-                
-                prices_type = ['Cons_max', 'Cons_min', 'Prod_min', 'Prod_max']
-                for zone, sectors_dict in zones_data.items():
-                    for index, price_type in enumerate(prices_type):
-                        row = [zone, price_type] + [sectors_dict.get(sect, [None] * 4)[index] for sect in all_sectors]
-                        data.append(row)
-    
-            df = pd.DataFrame(data, columns=columns)
-            
-            results_dir = self.work_dir / "results"
-            results_dir.mkdir(exist_ok=True)
-            
-            with pd.ExcelWriter(self.work_dir/"results"/"Output_prices.xlsx") as writer:
-                
+        
+            prices_type = ['Cons_max', 'Cons_min', 'Prod_min', 'Prod_max']
+        
+            for zone, sectors_dict in zones_data.items():
+                for index, price_type in enumerate(prices_type):
+                    row = [zone, price_type] + [sectors_dict.get(sect, [None] * 4)[index] for sect in all_sectors]
+                    data.append(row)
+        
+            dfs[year_str] = pd.DataFrame(data, columns=columns)
+        
+        results_dir = self.work_dir / "results"
+        results_dir.mkdir(exist_ok=True)
+        
+        with pd.ExcelWriter(self.work_dir / "results" / "Output_prices.xlsx") as writer:
+            for year_str, df in dfs.items():
                 df.to_excel(writer, sheet_name=year_str, index=False)
 
     def run(self, export_to_excel: bool) -> dict:
