@@ -2,6 +2,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from pandas import Timestamp
 from scipy.optimize import minimize
 
@@ -161,8 +162,45 @@ class Controller:
         #  It seems to happen when min and max initial_prices are close ? (to investigate and to fix)
         return float(res.x[0]), float(res.x[1])
 
-    def _export_results(self, results: dict):
-        raise NotImplementedError
+    def _export_results(self, results : dict):
+
+        """
+        Takes the dictionary results and displays its data in a spreadsheet in 
+        xlsx format. Each sheet represents a range of years entered by the user.
+    
+        :param results : dictionnary made by run with the computed 
+        price model for each year range x zone x main sector.
+        """
+
+        dfs = {}
+
+        for year, zones_data in results.items():
+            year_str = str(year)  
+        
+            data = []
+            all_sectors = set()  
+        
+            for zone_info in zones_data.values():
+                all_sectors.update(zone_info.keys())
+        
+            all_sectors = sorted(all_sectors)
+            columns = ['Zone', 'Price Type'] + list(all_sectors)
+        
+            prices_type = ['Cons_max', 'Cons_min', 'Prod_min', 'Prod_max']
+        
+            for zone, sectors_dict in zones_data.items():
+                for index, price_type in enumerate(prices_type):
+                    row = [zone, price_type] + [sectors_dict.get(sect, [None] * 4)[index] for sect in all_sectors]
+                    data.append(row)
+        
+            dfs[year_str] = pd.DataFrame(data, columns=columns)
+        
+        results_dir = self.work_dir / "results"
+        results_dir.mkdir(exist_ok=True)
+        
+        with pd.ExcelWriter(self.work_dir / "results" / "Output_prices.xlsx") as writer:
+            for year_str, df in dfs.items():
+                df.to_excel(writer, sheet_name=year_str, index=False)
 
     def run(self, export_to_excel: bool) -> dict:
         """
