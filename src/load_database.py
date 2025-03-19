@@ -17,18 +17,21 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
     data_dict_prod_user = {} # Dictionnary to store data
 
     file_name_template = "Prod_{}_2015_2019.xlsx"  # Country code will be inserted instead of brackets
-
+    
     for country in country_list:
         file_name = file_name_template.format(country)  # Replace {} by the country code
-        sheet_name = file_name[:-5]  # filename without .xlsx
-        df = pd.read_excel(folder_path / f"{file_name}", sheet_name=sheet_name, header=0)
-
-        df = df[(df["Début de l'heure"].dt.year >= start_year) & (df["Début de l'heure"].dt.year <= end_year)] # Filter only the years wanted
-
-        df.set_index(df.columns[0], inplace=True)  # First column (time) as index and Column name is also kept as index name
-
+                
+        df = pd.DataFrame() # Initialize dataframe df
+        
+        for year in range(start_year, end_year + 1):
+            sheet_name = str(year)
+            
+            df_year = pd.read_excel(folder_path / file_name, sheet_name=sheet_name, header=0, index_col=0) # index_col = 0 to set column time as index
+            
+            df = pd.concat([df, df_year])
+       
         data_dict_prod_user[country] = {} # Initialize the dictionary with countries
-
+    
         # Store for each country, then for each production mode, the produced power every hour
         for prod_mode in df.columns:
             data_dict_prod_user[country][prod_mode] = df[prod_mode].to_dict()
@@ -70,16 +73,17 @@ if __name__ == "__main__":
     db_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données")
     folder_path_prod = db_path / "Production par pays et par filière 2015-2019"
     folder_path_price = db_path / "Prix spot par an et par zone 2015-2019"
-    countries_list = ['AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',
+    country_list = ['AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',
                       'GB', 'GR', 'HU', 'IT', 'LT', 'NL', 'NO', 'PL', 'PT', 'RO',
-                      'SE', 'SI', 'SK']
-    start_year, end_year = 2015, 2015  # years of production database
+                      'SE', 'SI', 'SK']    
 
-    prod_users = load_database_prod_user(folder_path_prod, countries_list, start_year, end_year)
-    price_users = load_database_price_user(folder_path_price, countries_list, start_year, end_year)
+    start_year, end_year = 2015, 2019  # years of production database
+
+    prod_users = load_database_prod_user(folder_path_prod, country_list, start_year, end_year)
+    price_users = load_database_price_user(folder_path_price, country_list, start_year, end_year)
 
     time = pd.to_datetime("2015-02-20 14:00:00")
-    country = "FR"
+    country = "AT"
     production_mode = "fossil_gas_MW"
 
     try:
