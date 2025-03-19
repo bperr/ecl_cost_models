@@ -71,7 +71,8 @@ def read_user_inputs(file_path: Path) -> tuple[
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path("C:/Users/b.perreyon/Documents/ECL cost models/ecl_cost_models/Templates/User_inputs_Test.xlsx")
+    # file_path = Path("C:/Users/b.perreyon/Documents/ECL cost models/ecl_cost_models/Templates/User_inputs_Test.xlsx")
+    file_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données\Hypothèses de prix Utilisateurs\User_inputs.xlsx")
     try:
         years, countries_group, sectors_group, storages = read_user_inputs(file_path)
     except Exception as e:

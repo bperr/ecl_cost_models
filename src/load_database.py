@@ -71,7 +71,7 @@ def zones_to_country(df: pd.DataFrame) -> pd.Series:
 if __name__ == "__main__":
     # db_path = Path(__file__).parents[1] / "instance" / "database"
     db_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données")
-    folder_path_prod = db_path / "Production par pays et par filière 2015-2019"
+    folder_path_prod = db_path / "Production par pays et par filière 2015-2019" / "new"
     folder_path_price = db_path / "Prix spot par an et par zone 2015-2019"
     country_list = ['AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',
                       'GB', 'GR', 'HU', 'IT', 'LT', 'NL', 'NO', 'PL', 'PT', 'RO',

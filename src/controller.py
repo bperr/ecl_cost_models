@@ -2,10 +2,15 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from pandas import Timestamp
 from scipy.optimize import minimize
 
-from src.load_database import load_database_price_user, load_database_prod_user
+from load_database import load_database_price_user, load_database_prod_user
+from database_corrector import add_missing_dates_prod, add_missing_dates_price
+
+from read_user_inputs import read_user_inputs
+from read_price_hypothesis import read_price_hypothesis
 
 
 class Controller:
@@ -29,32 +34,70 @@ class Controller:
         self._read_database()
 
     def _read_user_inputs(self):
+
         """
-        read user inputs: zones, sectors, years, initial prices
-        :return:
+        Read user inputs to group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
+
+        Example of returned dictionary:
+        {"zones": {"IBR": ["ES", "PT"], "FRA": ["FR"]},
+         "sectors": {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]},
+         "storages": {Storage},
+         "years": [(2015, 2016), (2017, 2019)],
+         "initial prices": {"IBR": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]},
+                            "FRA": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]}}}
+
+        :param work_dir: Working directory including user inputs file(s)
+        :return: Dictionary with zones, sectors, storages, and years
         """
-        user_inputs = read_user_inputs(self.work_dir)
-        self.zones = user_inputs["zones"]
-        self.sectors = user_inputs["sectors"]
-        self.storages = user_inputs["storages"]
-        self.years = user_inputs["years"]
-        self.initial_prices = user_inputs["initial prices"]
+
+        # user_inputs = read_user_inputs(self.work_dir)
+        # self.zones = user_inputs["zones"]
+        # self.sectors = user_inputs["sectors"]
+        # self.storages = user_inputs["storages"]
+        # self.years = user_inputs["years"]
+        # self.initial_prices = user_inputs["initial prices"]
+        
+        hyp_user_path = self.work_dir / "User_inputs-v2.xlsx"
+        hyp_prices_path = self.work_dir / "Prices_inputs-v2.xlsx"
+        
+        user_inputs = read_user_inputs(file_path=hyp_user_path)
+        self.years = user_inputs[0] 
+        self.zones = user_inputs[1]
+        self.sectors = user_inputs[2]
+        self.storages = user_inputs[3]
+        
+        self.initial_prices = read_price_hypothesis(file_path=hyp_prices_path, years=self.years, countries_group=self.zones, sectors_group=self.sectors, storages=self.storages)
+
+
 
     def _read_database(self):
         """
         Read the database for the used years
         """
-        year_min = min([years[0] for years in self.years])
-        year_max = max([years[1] for years in self.years])
+        # year_min = min([years[0] for years in self.years])
+        # year_max = max([years[1] for years in self.years])
         countries = list(set([country for country_list in self.zones.values() for country in country_list]))
-        power_path = self.db_dir / "Production par pays et par filière 2015-2019"
-        self.historical_powers = load_database_prod_user(folder_path=power_path, country_list=countries,
-                                                         start_year=year_min, end_year=year_max)
+        power_path = self.db_dir / "Production par pays et par filière 2015-2019" / "new"
+        price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
+        
         # TODO option 1: use self.years in inputs of load_database_prod_user instead of (start_year, year_max)
         # TODO option 2: use a for loop here and have 1 tab per year in the power database
-        price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
-        self.historical_prices = load_database_price_user(folder_path=price_path, country_list=countries,
-                                                          start_year=year_min, end_year=year_max)
+        
+        self.historical_powers = {}
+        self.historical_prices = {}
+       
+        for (year_min, year_max) in self.years : # For each year group
+            powers_users = load_database_prod_user(folder_path=power_path, country_list=countries,
+                                                         start_year=year_min, end_year=year_max)
+            prices_users = load_database_price_user(folder_path=price_path, country_list=countries,
+                                                              start_year=year_min, end_year=year_max)
+        
+            # add_missing_dates_prod(powers_users, countries, year_min, year_max)
+            # add_missing_dates_price(prices_users, countries, year_min, year_max)
+
+            self.historical_powers.update(powers_users)
+            self.historical_prices.update(prices_users)
+
 
     @staticmethod
     def _compute_power_factor(price: float, price_no_power: float, price_full_power: float, consumption_mode: bool):
@@ -94,9 +137,11 @@ class Controller:
         for country in countries:
             if country in self.historical_powers.keys():
                 country_data = self.historical_powers[country]
+                                
                 for sector in detailed_sectors:
                     if f"{sector}_MW" in country_data.keys():
                         sector_data = country_data[f"{sector}_MW"]
+                                                
                         for time_step in sector_data.keys():
                             if time_step.year in years:
                                 if time_step not in power_series.keys():
@@ -161,8 +206,45 @@ class Controller:
         #  It seems to happen when min and max initial_prices are close ? (to investigate and to fix)
         return float(res.x[0]), float(res.x[1])
 
-    def _export_results(self, results: dict):
-        raise NotImplementedError
+    def _export_results(self, results : dict):
+
+        """
+        Takes the dictionary results and displays its data in a spreadsheet in 
+        xlsx format. Each sheet represents a range of years entered by the user.
+    
+        :param results : dictionnary made by run with the computed 
+        price model for each year range x zone x main sector.
+        """
+
+        dfs = {}
+
+        for year, zones_data in results.items():
+            year_str = str(year)  
+        
+            data = []
+            all_sectors = set()  
+        
+            for zone_info in zones_data.values():
+                all_sectors.update(zone_info.keys())
+        
+            all_sectors = sorted(all_sectors)
+            columns = ['Zone', 'Price Type'] + list(all_sectors)
+        
+            prices_type = ['Cons_max', 'Cons_min', 'Prod_min', 'Prod_max']
+        
+            for zone, sectors_dict in zones_data.items():
+                for index, price_type in enumerate(prices_type):
+                    row = [zone, price_type] + [sectors_dict.get(sect, [None] * 4)[index] for sect in all_sectors]
+                    data.append(row)
+        
+            dfs[year_str] = pd.DataFrame(data, columns=columns)
+        
+        results_dir = self.work_dir / "results"
+        results_dir.mkdir(exist_ok=True)
+        
+        with pd.ExcelWriter(self.work_dir / "results" / "Output_prices.xlsx") as writer:
+            for year_str, df in dfs.items():
+                df.to_excel(writer, sheet_name=year_str, index=False)
 
     def run(self, export_to_excel: bool) -> dict:
         """
@@ -245,20 +327,20 @@ class Controller:
         return results
 
 
-def read_user_inputs(work_dir: Path):  # FIXME not implemented
-    """
-    Read user inputs to group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
+# def read_user_inputs(work_dir: Path):  # FIXME not implemented
+#     """
+#     Read user inputs to group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
 
-    Example of returned dictionary:
-    {"zones": {"IBR": ["ES", "PT"], "FRA": ["FR"]},
-     "sectors": {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]},
-     "storages": {Storage},
-     "years": [(2015, 2016), (2017, 2019)],
-     "initial prices": {"IBR": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]},
-                        "FRA": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]}}}
+#     Example of returned dictionary:
+#     {"zones": {"IBR": ["ES", "PT"], "FRA": ["FR"]},
+#      "sectors": {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]},
+#      "storages": {Storage},
+#      "years": [(2015, 2016), (2017, 2019)],
+#      "initial prices": {"IBR": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]},
+#                         "FRA": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]}}}
 
-    :param work_dir: Working directory including user inputs file(s)
-    :return: Dictionary with zones, sectors, storages, and years
-    """
+#     :param work_dir: Working directory including user inputs file(s)
+#     :return: Dictionary with zones, sectors, storages, and years
+#     """
 
-    raise NotImplementedError
+#     raise NotImplementedError
