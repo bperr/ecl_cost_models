@@ -158,8 +158,31 @@ class Controller:
         res = minimize(error_function, initial_prices, method="nelder-mead",
                        options={'xatol': 1e-8, 'disp': True})
 
-        # FIXME: Scipy minimize can be successful but return incorrect results (res.fun >> tolerance (1e-8))
-        #  It seems to happen when min and max initial_prices are close ? (to investigate and to fix)
+        tolerance = 0.2 # Tolerance threshold for the value of error_function after minimization
+
+        if float(res.fun) > tolerance: 
+            
+            minimization_results = {}
+            minimization_results[res.fun] = res.x
+            
+            i=1
+            imax=5 #Increase imax to test more prices
+            
+            while min(minimization_results) > tolerance and i < imax : 
+                
+                test_prices = np.array([initial_prices[0]*0.8,initial_prices[1]*1.2])
+                test_res = minimize(error_function, test_prices, method="nelder-mead", options={'disp': True})
+                minimization_results[test_res.fun] = test_res.x
+                i+=1
+                
+            best_minimization = minimization_results[min(minimization_results)] #Search the prices which give the lowest value of error_function
+            
+            if min(minimization_results) > tolerance:  #If unsatisfactory results
+                warnings.warn("Best minization above "+str(tolerance))
+                
+            return float(best_minimization[0]), float(best_minimization[1])
+
+
         return float(res.x[0]), float(res.x[1])
 
     def _export_results(self, results : dict):
