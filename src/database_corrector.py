@@ -51,7 +51,7 @@ def add_missing_dates_prod(production: dict, countries_list: list[str], start_ye
                     for power_plant in power_plant_list: 
                         production[country][power_plant][current_date] = production[country][power_plant][previous_date]
                 
-                else:
+                if current_date not in [start_date, end_date] :
                     
                     if next_date in production[country][first_power_plant]:  #Check if creating a power value by averaging the previous and the next values is possible
                         
@@ -97,7 +97,7 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
                     price[country][current_date] = price[country][previous_date]
 
                     
-            else: 
+            if current_date not in [start_date, end_date] : 
                 
                 if next_date in price[first_country]:  #Check if creating a price value by averaging the previous and the next values is possible
                 
