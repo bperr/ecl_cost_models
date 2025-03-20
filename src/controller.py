@@ -7,6 +7,7 @@ from pandas import Timestamp
 from scipy.optimize import minimize
 
 from src.load_database import load_database_price_user, load_database_prod_user
+from instance.draft.draft import minimize_2
 
 
 class Controller:
@@ -155,12 +156,13 @@ class Controller:
                 errors.append(abs(expected_power_factor - power_factor_model))
             return sum(errors) / len(errors)
 
-        res = minimize(error_function, initial_prices, method="nelder-mead",
-                       options={'xatol': 1e-8, 'disp': True})
+        # res = minimize(error_function, initial_prices, method="nelder-mead",
+        #                options={'xatol': 1e-8, 'disp': True})
+        res = minimize_2(error_function=error_function, x_min=0, x_max=200, x_tol=1, n_split=40)
 
         # FIXME: Scipy minimize can be successful but return incorrect results (res.fun >> tolerance (1e-8))
         #  It seems to happen when min and max initial_prices are close ? (to investigate and to fix)
-        return float(res.x[0]), float(res.x[1])
+        return res["x"]  # float(res.x[0]), float(res.x[1])
 
     def _export_results(self, results : dict):
 
