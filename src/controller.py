@@ -7,7 +7,6 @@ from pandas import Timestamp
 from scipy.optimize import minimize
 
 from src.load_database import load_database_price_user, load_database_prod_user
-from instance.draft.draft import minimize_2
 
 
 class Controller:
@@ -302,3 +301,30 @@ def read_user_inputs(work_dir: Path):  # FIXME not implemented
     """
 
     raise NotImplementedError
+
+
+def minimize_2(error_function, x_min: float, x_max: float, x_tol: float, n_split: int = 10):
+    dx = (x_max - x_min) / n_split
+    results = dict()
+    for i in range(n_split + 1):
+        x1 = x_min + dx * i
+        for j in range(i, n_split + 1):
+            x2 = x_min + dx * j
+            results[x1, x2] = error_function([x1, x2])
+    x1_ref, x2_ref = min(results, key=results.get)
+    while dx > x_tol:  # or res > res_tol
+        dx = dx / 2
+        candidates = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        best_candidate = (x1_ref, x2_ref)
+        best_res = results[x1_ref, x2_ref]
+        for (i, j) in candidates:
+            x1 = x1_ref + i * dx
+            x2 = x2_ref + j * dx
+            if x_min <= x1 <= x2 <= x_max:
+                res = error_function([x1, x2])
+                if res < best_res:
+                    best_candidate = (x1, x2)
+                    best_res = res
+        x1_ref, x2_ref = best_candidate
+        results[best_candidate] = best_res
+    return {"x": (x1_ref, x2_ref), "res": results[x1_ref, x2_ref]}
