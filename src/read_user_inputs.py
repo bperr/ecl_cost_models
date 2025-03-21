@@ -2,11 +2,12 @@ from pathlib import Path
 import pandas as pd
 import warnings
 
+
 def read_user_inputs(file_path: Path) -> tuple[
-        list[tuple[int, int]], #years
-        dict[str, list[str]],  #countries_group
-        dict[str, list[str]],  #sectors_group
-        list[str]]:            #storages
+    list[tuple[int, int]],  # years
+    dict[str, list[str]],  # countries_group
+    dict[str, list[str]],  # sectors_group
+    list[str]]:  # storages
     """
     Loads the user inputs Excel file and returns the parameters to enter in the read_price_hypothesis function.
     
@@ -38,7 +39,7 @@ def read_user_inputs(file_path: Path) -> tuple[
         ## Data validation ##
         if (df_years['Year min'] > df_years['Year max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'Year min' must be <= 'Year max' for all rows.")
-        
+
         years = list(zip(df_years['Year min'], df_years['Year max']))
 
         # --- Extract country groups ---
@@ -46,7 +47,7 @@ def read_user_inputs(file_path: Path) -> tuple[
         check_columns(df_zones, {'Zone', 'Node'}, 'Zones')
         countries_group = df_zones.groupby('Zone')['Node'].apply(list).to_dict()
 
-        #--- Extract sector groups ---
+        # --- Extract sector groups ---
         df_sectors = xls.parse('Sectors', dtype=str)
         check_columns(df_sectors, {'Main sector', 'Detailed sector'}, 'Sectors')
         sectors_group = df_sectors.groupby('Main sector')['Detailed sector'].apply(list).to_dict()
@@ -55,19 +56,24 @@ def read_user_inputs(file_path: Path) -> tuple[
         df_clustering = xls.parse('Clustering', dtype={'Is storage': float})
         check_columns(df_clustering, {'Main sector', 'Is storage'}, 'Clustering')
         storages = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
-        
+
         # --- Validation: Check if all zones & main sectors in Clustering exist in other sheets ---
         unused_main_sectors = set(df_clustering['Main sector'].dropna()) - set(sectors_group.keys())
         unused_zones = set(df_clustering['Zone'].dropna()) - set(countries_group.keys())
         if len(unused_main_sectors) > 0:
-            warnings.warn(f"The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': {unused_main_sectors}", stacklevel = 2)
+            warnings.warn(
+                f"The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': {unused_main_sectors}",
+                stacklevel=2)
         if len(unused_zones) > 0:
-            warnings.warn(f"The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}", stacklevel = 2)   
-        
+            warnings.warn(
+                f"The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}",
+                stacklevel=2)
+
         return years, countries_group, sectors_group, storages
 
     except Exception as e:
         raise ValueError(f"Error while reading the Excel file: {e}")
+
 
 # Example usage
 if __name__ == "__main__":
