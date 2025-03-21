@@ -206,12 +206,15 @@ class Controller:
                     price=price, price_no_power=x[0], price_full_power=x[1], consumption_mode=consumption_mode)
                 errors.append(abs(expected_power_factor - power_factor_model))
             return sum(errors) / len(errors)
+        
+        constraints = [{'type': "ineq", 'fun': lambda x: x[0]},{'type': "ineq", 'fun': lambda x: x[1] - x[0]} ] # min_price must be positive, max_price-min_price must be positive
+     
 
-        res = minimize(error_function, initial_prices, method="nelder-mead",
-                       options={'xatol': 1e-8, 'disp': True})
+        res = minimize(error_function, initial_prices,
+                       options={'disp': True}, constraints=constraints) 
 
-        # FIXME: Scipy minimize can be successful but return incorrect results (res.fun >> tolerance (1e-8))
-        #  It seems to happen when min and max initial_prices are close ? (to investigate and to fix)
+        
+
         return float(res.x[0]), float(res.x[1])
 
     def _export_results(self, results : dict):
