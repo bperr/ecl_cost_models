@@ -155,7 +155,7 @@ class Controller:
         # {time_step: price, power factor, power} associated to the input group of years, countries and sectors
         series = dict()
         power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
-        #assert power_rating > 0 non,par exemple pour le nucléaire en Grèce
+        #assert power_rating > 0 raise for the nuclear in Greece for instance
 
         for time_step in power_series.keys():
             prices = list()
