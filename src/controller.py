@@ -51,13 +51,7 @@ class Controller:
         :return: Dictionary with zones, sectors, storages, and years
         """
 
-        # user_inputs = read_user_inputs(self.work_dir)
-        # self.zones = user_inputs["zones"]
-        # self.sectors = user_inputs["sectors"]
-        # self.storages = user_inputs["storages"]
-        # self.years = user_inputs["years"]
-        # self.initial_prices = user_inputs["initial prices"]
-        
+    
         hyp_user_path = self.work_dir / "User_inputs-v2.xlsx"
         hyp_prices_path = self.work_dir / "Prices_inputs-v2.xlsx"
         
@@ -74,8 +68,7 @@ class Controller:
         """
         Read the database for the used years
         """
-        # year_min = min([years[0] for years in self.years])
-        # year_max = max([years[1] for years in self.years])
+       
         countries = list(set([country for country_list in self.zones.values() for country in country_list]))
         power_path = self.db_dir / "Production par pays et par filière 2015-2019"
         price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
@@ -184,7 +177,7 @@ class Controller:
                 continue
             power = power_series[time_step]
             if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
-                if power_rating == 0: # pour pas que tout plante même quand il n'y pas d'un type de prod d'énergie
+                if power_rating == 0: 
                     series[time_step] = {"price": sum(prices) / len(prices),
                                          "power factor": power,
                                          "power": power}
@@ -316,8 +309,6 @@ class Controller:
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
 
 
-
-#########################"""
                     zone_production_series = self._get_series(
                         years=[y for y in range(year_min, year_max + 1)],
                         countries=countries,
