@@ -5,8 +5,13 @@ import numpy as np
 import pandas as pd
 from pandas import Timestamp
 from scipy.optimize import minimize
+from typing import Union
 
-from src.load_database import load_database_price_user, load_database_prod_user
+from load_database import load_database_price_user, load_database_prod_user
+from database_corrector import add_missing_dates_prod, add_missing_dates_price
+
+from read_user_inputs import read_user_inputs
+from read_price_hypothesis import read_price_hypothesis
 
 
 class Controller:
@@ -30,32 +35,69 @@ class Controller:
         self._read_database()
 
     def _read_user_inputs(self):
+
         """
-        read user inputs: zones, sectors, years, initial prices
-        :return:
+        Read user inputs to group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
+
+        Example of returned dictionary:
+        {"zones": {"IBR": ["ES", "PT"], "FRA": ["FR"]},
+         "sectors": {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]},
+         "storages": {Storage},
+         "years": [(2015, 2016), (2017, 2019)],
+         "initial prices": {"IBR": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]},
+                            "FRA": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]}}}
+
+        :param work_dir: Working directory including user inputs file(s)
+        :return: Dictionary with zones, sectors, storages, and years
         """
-        user_inputs = read_user_inputs(self.work_dir)
-        self.zones = user_inputs["zones"]
-        self.sectors = user_inputs["sectors"]
-        self.storages = user_inputs["storages"]
-        self.years = user_inputs["years"]
-        self.initial_prices = user_inputs["initial prices"]
+
+        # user_inputs = read_user_inputs(self.work_dir)
+        # self.zones = user_inputs["zones"]
+        # self.sectors = user_inputs["sectors"]
+        # self.storages = user_inputs["storages"]
+        # self.years = user_inputs["years"]
+        # self.initial_prices = user_inputs["initial prices"]
+        
+        hyp_user_path = self.work_dir / "User_inputs-v2.xlsx"
+        hyp_prices_path = self.work_dir / "Prices_inputs-v2.xlsx"
+        
+        user_inputs = read_user_inputs(file_path=hyp_user_path)
+        self.years = user_inputs[0] 
+        self.zones = user_inputs[1]
+        self.sectors = user_inputs[2]
+        self.storages = user_inputs[3]
+        
+        self.initial_prices = read_price_hypothesis(file_path=hyp_prices_path, years=self.years, countries_group=self.zones, sectors_group=self.sectors, storages=self.storages)
+
 
     def _read_database(self):
         """
         Read the database for the used years
         """
-        year_min = min([years[0] for years in self.years])
-        year_max = max([years[1] for years in self.years])
+        # year_min = min([years[0] for years in self.years])
+        # year_max = max([years[1] for years in self.years])
         countries = list(set([country for country_list in self.zones.values() for country in country_list]))
         power_path = self.db_dir / "Production par pays et par filière 2015-2019"
-        self.historical_powers = load_database_prod_user(folder_path=power_path, country_list=countries,
-                                                         start_year=year_min, end_year=year_max)
+        price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
+        
         # TODO option 1: use self.years in inputs of load_database_prod_user instead of (start_year, year_max)
         # TODO option 2: use a for loop here and have 1 tab per year in the power database
-        price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
-        self.historical_prices = load_database_price_user(folder_path=price_path, country_list=countries,
-                                                          start_year=year_min, end_year=year_max)
+        
+        self.historical_powers = {}
+        self.historical_prices = {}
+       
+        for (year_min, year_max) in self.years : # For each year group
+            powers_users = load_database_prod_user(folder_path=power_path, country_list=countries,
+                                                         start_year=year_min, end_year=year_max)
+            prices_users = load_database_price_user(folder_path=price_path, country_list=countries,
+                                                              start_year=year_min, end_year=year_max)
+        
+            add_missing_dates_prod(powers_users, countries, year_min, year_max)
+            add_missing_dates_price(prices_users, countries, year_min, year_max)
+
+            self.historical_powers.update(powers_users)
+            self.historical_prices.update(prices_users)
+
 
     @staticmethod
     def _compute_power_factor(price: float, price_no_power: float, price_full_power: float, consumption_mode: bool):
@@ -95,9 +137,11 @@ class Controller:
         for country in countries:
             if country in self.historical_powers.keys():
                 country_data = self.historical_powers[country]
+                                
                 for sector in detailed_sectors:
                     if f"{sector}_MW" in country_data.keys():
                         sector_data = country_data[f"{sector}_MW"]
+                                                
                         for time_step in sector_data.keys():
                             if time_step.year in years:
                                 if time_step not in power_series.keys():
@@ -111,7 +155,7 @@ class Controller:
         # {time_step: price, power factor, power} associated to the input group of years, countries and sectors
         series = dict()
         power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
-        assert power_rating > 0
+        #assert power_rating > 0 non,par exemple pour le nucléaire en Grèce
 
         for time_step in power_series.keys():
             prices = list()
@@ -124,9 +168,15 @@ class Controller:
                 continue
             power = power_series[time_step]
             if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
-                series[time_step] = {"price": sum(prices) / len(prices),
-                                     "power factor": power / power_rating,
-                                     "power": power}
+                if power_rating == 0: # pour pas que tout plante même quand il n'y pas d'un type de prod d'énergie
+                    series[time_step] = {"price": sum(prices) / len(prices),
+                                         "power factor": power,
+                                         "power": power}
+                else:
+                    series[time_step] = {"price": sum(prices) / len(prices),
+                                         "power factor": power / power_rating,
+                                         "power": power}
+                
         return series
 
     def _optimize_error(self, initial_prices: list, series: dict[Timestamp, dict[str, float]], consumption_mode: bool) \
@@ -150,6 +200,8 @@ class Controller:
             for time_step, data in series.items():
                 price = data["price"]
                 expected_power_factor = data["power factor"]
+                if pd.isna(price) or pd.isna(expected_power_factor):
+                    continue
                 power_factor_model = self._compute_power_factor(
                     price=price, price_no_power=x[0], price_full_power=x[1], consumption_mode=consumption_mode)
                 errors.append(abs(expected_power_factor - power_factor_model))
@@ -215,9 +267,19 @@ class Controller:
         for (year_min, year_max) in self.years:
             years_key = f"{year_min}-{year_max}"
             results[years_key] = dict()
+            
+        
+            
             for (zone, countries) in self.zones.items():
+                #une boucle seulement pour 'BLK', ['GR']
+                
                 results[years_key][zone] = dict()
-                for (main_sector, detailed_sectors) in self.sectors.items():
+                
+                
+                for (main_sector, detailed_sectors) in self.sectors.items(): 
+                    # items([('Fossil', [ 'fossil_gas'])])
+                    
+                    
                     is_storage = main_sector in self.storages
 
                     consumption_price_full_power = None
@@ -240,18 +302,20 @@ class Controller:
                         countries=countries,
                         detailed_sectors=detailed_sectors,
                         consumption_mode=False)
+                    
                     assert len(zone_production_series) > 0
-                    initial_price_no_power, initial_price_full_power = self.initial_prices[zone][main_sector][2:4]
+                    initial_price_no_power, initial_price_full_power = self.initial_prices[(year_min,year_max)][zone][main_sector][2:4]
                     initial_prices = [initial_price_no_power, initial_price_full_power]
                     optimized_prices = self._optimize_error(series=zone_production_series,
                                                             initial_prices=initial_prices, consumption_mode=False)
+
                     production_price_no_power, production_price_full_power = optimized_prices
                     # Expected:
                     # consumption_price_full_power <= consumption_price_no_power
                     # <= production_price_no_power <= production_price_full_power
                     if is_storage:  # consumption prices are not None
-                        assert isinstance(consumption_price_full_power, float | int)
-                        assert isinstance(consumption_price_no_power, float | int)
+                        assert isinstance(consumption_price_full_power, (float, int))
+                        assert isinstance(consumption_price_no_power, (float, int))
                         if consumption_price_no_power > production_price_no_power:
                             print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
                                   f"consumption_price_no_power = {consumption_price_no_power} "
@@ -266,8 +330,8 @@ class Controller:
                                   f"> {consumption_price_no_power} = consumption_price_no_power\n"
                                   f"consumption_price_full_power is replaced by consumption_price_no_power")
 
-                    assert isinstance(production_price_no_power, float | int)
-                    assert isinstance(production_price_full_power, float | int)
+                    assert isinstance(production_price_no_power, (float, int))
+                    assert isinstance(production_price_full_power,(float, int))
                     if production_price_no_power > production_price_full_power:
                         production_price_full_power = production_price_no_power
                         print(f"Warning: {year_min} to {year_max} | {zone} | {main_sector}: "
@@ -278,25 +342,7 @@ class Controller:
                                                              consumption_price_no_power,
                                                              production_price_no_power,
                                                              production_price_full_power]
+        
         if export_to_excel:
             self._export_results(results=results)
         return results
-
-
-def read_user_inputs(work_dir: Path):  # FIXME not implemented
-    """
-    Read user inputs to group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
-
-    Example of returned dictionary:
-    {"zones": {"IBR": ["ES", "PT"], "FRA": ["FR"]},
-     "sectors": {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]},
-     "storages": {Storage},
-     "years": [(2015, 2016), (2017, 2019)],
-     "initial prices": {"IBR": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]},
-                        "FRA": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]}}}
-
-    :param work_dir: Working directory including user inputs file(s)
-    :return: Dictionary with zones, sectors, storages, and years
-    """
-
-    raise NotImplementedError
