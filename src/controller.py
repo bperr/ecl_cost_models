@@ -94,9 +94,21 @@ class Controller:
         
             add_missing_dates_prod(powers_users, countries, year_min, year_max)
             add_missing_dates_price(prices_users, countries, year_min, year_max)
+            
+        
 
-            self.historical_powers.update(powers_users)
-            self.historical_prices.update(prices_users)
+            for country, prod_mode_dict in powers_users.items():
+                if country not in self.historical_powers.keys():
+                    self.historical_powers[country] = {}
+                for prod_mode, power_dict in prod_mode_dict.items():
+                    if prod_mode not in self.historical_powers[country].keys():
+                        self.historical_powers[country][prod_mode] = {}
+                    self.historical_powers[country][prod_mode].update(power_dict)  
+
+            for country, price_dict in prices_users.items():
+                if country not in self.historical_prices.keys():
+                    self.historical_prices[country]= {}
+                self.historical_prices[country].update(price_dict) 
 
 
     @staticmethod
@@ -146,7 +158,8 @@ class Controller:
                             if time_step.year in years:
                                 if time_step not in power_series.keys():
                                     power_series[time_step] = 0
-                                power_series[time_step] += sector_data[time_step]
+                                if not pd.isna(sector_data[time_step]):
+                                    power_series[time_step] += sector_data[time_step]
                     else:
                         warnings.warn(f"{sector} not in {country} data")
             else:
@@ -155,14 +168,15 @@ class Controller:
         # {time_step: price, power factor, power} associated to the input group of years, countries and sectors
         series = dict()
         power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
-        #assert power_rating > 0 raise for the nuclear in Greece for instance
+        #assert power_rating > 0 non,par exemple pour le nucléaire en Grèce
 
         for time_step in power_series.keys():
             prices = list()
             for country in countries:
                 assert country in self.historical_prices.keys()
                 if time_step in self.historical_prices[country]:
-                    prices.append(self.historical_prices[country][time_step])
+                    if not pd.isna(self.historical_prices[country][time_step]):
+                        prices.append(self.historical_prices[country][time_step])
             if len(prices) == 0:
                 warnings.warn(f"price for {time_step} is not provided. Time step is skipped")
                 continue
@@ -200,21 +214,16 @@ class Controller:
             for time_step, data in series.items():
                 price = data["price"]
                 expected_power_factor = data["power factor"]
-                if pd.isna(price) or pd.isna(expected_power_factor):
-                    continue
+                
                 power_factor_model = self._compute_power_factor(
                     price=price, price_no_power=x[0], price_full_power=x[1], consumption_mode=consumption_mode)
                 errors.append(abs(expected_power_factor - power_factor_model))
             return sum(errors) / len(errors)
-        
         constraints = [{'type': "ineq", 'fun': lambda x: x[0]},{'type': "ineq", 'fun': lambda x: x[1] - x[0]} ] # min_price must be positive, max_price-min_price must be positive
      
 
         res = minimize(error_function, initial_prices,
                        options={'disp': True}, constraints=constraints) 
-
-        
-
         return float(res.x[0]), float(res.x[1])
 
     def _export_results(self, results : dict):
@@ -274,14 +283,12 @@ class Controller:
         
             
             for (zone, countries) in self.zones.items():
-                #une boucle seulement pour 'BLK', ['GR']
+              
                 
                 results[years_key][zone] = dict()
                 
                 
                 for (main_sector, detailed_sectors) in self.sectors.items(): 
-                    # items([('Fossil', [ 'fossil_gas'])])
-                    
                     
                     is_storage = main_sector in self.storages
 
@@ -294,7 +301,7 @@ class Controller:
                             detailed_sectors=detailed_sectors,
                             consumption_mode=True)
                         assert len(zone_consumption_series) > 0
-                        initial_price_full_power, initial_price_no_power = self.initial_prices[zone][main_sector][0:2]
+                        initial_price_full_power, initial_price_no_power = self.initial_prices[(year_min,year_max)][zone][main_sector][0:2]
                         initial_prices = [initial_price_no_power, initial_price_full_power]
                         optimized_prices = self._optimize_error(series=zone_consumption_series,
                                                                 initial_prices=initial_prices, consumption_mode=True)
