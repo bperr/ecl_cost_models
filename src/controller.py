@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 from pandas import Timestamp
 from scipy.optimize import minimize
-from typing import Union
 
 from load_database import load_database_price_user, load_database_prod_user
 from database_corrector import add_missing_dates_prod, add_missing_dates_price
@@ -51,9 +50,9 @@ class Controller:
         :return: Dictionary with zones, sectors, storages, and years
         """
 
-    
-        hyp_user_path = self.work_dir / "User_inputs-v2.xlsx"
-        hyp_prices_path = self.work_dir / "Prices_inputs-v2.xlsx"
+        
+        hyp_user_path = self.work_dir / "User_inputs.xlsx"
+        hyp_prices_path = self.work_dir / "Prices_inputs.xlsx"
         
         user_inputs = read_user_inputs(file_path=hyp_user_path)
         self.years = user_inputs[0] 
@@ -68,7 +67,6 @@ class Controller:
         """
         Read the database for the used years
         """
-       
         countries = list(set([country for country_list in self.zones.values() for country in country_list]))
         power_path = self.db_dir / "Production par pays et par filière 2015-2019"
         price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
@@ -177,14 +175,9 @@ class Controller:
                 continue
             power = power_series[time_step]
             if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
-                if power_rating == 0: 
-                    series[time_step] = {"price": sum(prices) / len(prices),
-                                         "power factor": power,
-                                         "power": power}
-                else:
-                    series[time_step] = {"price": sum(prices) / len(prices),
-                                         "power factor": power / power_rating,
-                                         "power": power}
+                series[time_step] = {"price": sum(prices) / len(prices),
+                                     "power factor": power / power_rating,
+                                     "power": power}
                 
         return series
 
@@ -307,6 +300,7 @@ class Controller:
                             optimized_prices = self._optimize_error(series=zone_consumption_series,
                                                                     initial_prices=initial_prices, consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
+
 
 
                     zone_production_series = self._get_series(
