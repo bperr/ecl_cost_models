@@ -6,12 +6,11 @@ Created on Fri Mar  7 13:55:19 2025
 """
 
 from pathlib import Path
-from datetime import datetime, timedelta
-from load_database import load_database_prod_user
-from load_database import load_database_price_user
 
 import pandas as pd
 
+from src.load_database import load_database_price_user
+from src.load_database import load_database_prod_user
 
 
 # Function adding the missing dates of the database
@@ -111,10 +110,8 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
         current_date += pd.Timedelta(hours=1)  # Iteration process
         
 
-            
 # Utilization example
 if __name__ == "__main__":
-    
     # db_path = Path(__file__).parents[1] / "instance" / "database"
     db_path = Path(r"C:\Users\trist\OneDrive\Documents\ECL3A\Option énergie\Projet d'option\Code\database")
     folder_path_prod = db_path / "Production par pays et par filière 2015-2019"
@@ -128,8 +125,3 @@ if __name__ == "__main__":
     
     add_missing_dates_prod(prod_users, countries, start_year, end_year)
     add_missing_dates_price(price_users, countries, start_year, end_year)
-    
-    
-    
-    
-    

@@ -6,9 +6,11 @@ from controller import Controller
 # work_dir = studies_dir / "study_1"
 # db_dir = studies_dir / "database"
 
-work_dir = Path(r"C:\Users\trist\OneDrive\Documents\ECL3A\Option énergie\Projet d'option\Code\database")
-db_dir = Path(r"C:\Users\trist\OneDrive\Documents\ECL3A\Option énergie\Projet d'option\Code\database")
 
-controller = Controller(work_dir=work_dir, db_dir=db_dir)
-results = controller.run(export_to_excel=True)  # FIXME Export to Excel
-print(results)
+if __name__=="__main__":
+    work_dir = Path("C:/.../wk dir")
+    db_dir = Path("C:/.../database")
+
+    controller = Controller(work_dir=work_dir, db_dir=db_dir)
+    results = controller.run(export_to_excel=True)
+    print(results)
