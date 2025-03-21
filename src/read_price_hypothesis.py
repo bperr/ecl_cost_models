@@ -1,12 +1,14 @@
 from pathlib import Path
 import pandas as pd
+from typing import Optional
+
 
 def read_price_hypothesis(file_path: Path, 
                           years: list[tuple[int, int]], 
                           countries_group: dict[str, list[str]],
                           sectors_group: dict[str, list[str]], 
                           storages: list[str]) \
-        -> dict[tuple[int, int], dict[str, dict[str, list[float | None]]]]:
+        -> dict[tuple[int, int], dict[str, dict[str, list[Optional[float]]]]]:
     """
     Loads the user hypothesis Excel file and generates a dictionary containing the 0% and 100% threshold prices data
     structured as {year_group}{zone}{production_mode: [cons_price_100, cons_price_0, prod_price_0, prod_price_100]}.
@@ -70,6 +72,7 @@ def read_price_hypothesis(file_path: Path,
 
             # Iterate through production modes
             for prod_mode in production_modes:
+                
                 price_p0 = float(df.loc[f"{prod_mode}_p0", zone])
                 price_p100 = float(df.loc[f"{prod_mode}_p100", zone])
 
@@ -110,11 +113,39 @@ def read_price_hypothesis(file_path: Path,
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path("C:/Users/b.perreyon/Downloads/Hypothesis User v2.xlsx")
+    # file_path = Path("C:/Users/b.perreyon/Downloads/Hypothesis User v2.xlsx")
+    file_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données\Hypothèses de prix Utilisateurs\Prices_inputs-v2.xlsx")
     years_list = [(2015, 2015), (2016, 2018)]
-    zones_to_countries = {'FR': ["FR"], 'GB': ["GB"]}
-    main_sectors_to_detailed_sectors = {'biomass': ['biomass'], 'fossil_gas': ['fossil_gas'],
-                                        'hydro_pumped_storage': ["hydro_pumped_storage"]}
+    # zones_to_countries = {'FR': ["FR"], 'GB': ["GB"]}
+    zones_to_countries = {'BLK': ['AL', 'BA', 'BG', 'CY', 'GR', 'HR', 'ME', 'MK', 'RO', 'RS', 'SI'],
+     'BNX': ['BE', 'LU', 'NL'],
+     'BRI': ['IE', 'GB'],
+     'CEU': ['AT', 'CZ', 'HU', 'SK'],
+     'EEU': ['EE', 'LT', 'LV', 'PL'],
+     'FRA': ['FR'],
+     'GER': ['DE'],
+     'IBR': ['ES', 'PT'],
+     'ITA': ['CH', 'IT', 'MT'],
+     'SCA': ['DK', 'FI', 'NO', 'SE']}
+    # main_sectors_to_detailed_sectors = {'biomass': ['biomass'], 'fossil_gas': ['fossil_gas'],
+    #                                     'hydro_pumped_storage': ["hydro_pumped_storage"]}
+    
+    main_sectors_to_detailed_sectors = {'Fossil': ['fossil_brown_coal_lignite',
+      'fossil_coal_derived_gas',
+      'fossil_gas',
+      'fossil_hard_coal',
+      'fossil_oil',
+      'other'],
+     'Nuclear': ['nuclear'],
+     'RES': ['biomass',
+      'geothermal',
+      'hydro_run_of_river_and_poundage',
+      'other_renewable',
+      'solar',
+      'waste',
+      'wind_onshore',
+      'wind_offshore'],
+     'Storage': ['hydro_pumped_storage', 'hydro_water_reservoir']}
     storage_list = ["hydro_pumped_storage"]
 
     user_hypotheses = read_price_hypothesis(file_path, years_list, zones_to_countries, main_sectors_to_detailed_sectors,
@@ -122,8 +153,8 @@ if __name__ == "__main__":
 
     # Example of accessing data
     year_range = (2015, 2015)
-    zone = "FR"
-    production_mode = "hydro_pumped_storage"
+    zone = "FRA"
+    production_mode = "Storage"
 
     try:
         value = user_hypotheses[year_range][zone][production_mode]
