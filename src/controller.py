@@ -168,7 +168,9 @@ class Controller:
         # {time_step: price, power factor, power} associated to the input group of years, countries and sectors
         series = dict()
         power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
-        #assert power_rating > 0 non,par exemple pour le nucléaire en Grèce
+        
+        if power_rating == 0: # The power plant does not exist in the country
+            return {}
 
         for time_step in power_series.keys():
             prices = list()
@@ -294,60 +296,67 @@ class Controller:
 
                     consumption_price_full_power = None
                     consumption_price_no_power = None
+                    production_price_no_power = None
+                    production_price_full_power = None
+                    
+                    
                     if is_storage:
+                        
                         zone_consumption_series = self._get_series(
                             years=[y for y in range(year_min, year_max + 1)],
                             countries=countries,
                             detailed_sectors=detailed_sectors,
                             consumption_mode=True)
-                        assert len(zone_consumption_series) > 0
-                        initial_price_full_power, initial_price_no_power = self.initial_prices[(year_min,year_max)][zone][main_sector][0:2]
-                        initial_prices = [initial_price_no_power, initial_price_full_power]
-                        optimized_prices = self._optimize_error(series=zone_consumption_series,
-                                                                initial_prices=initial_prices, consumption_mode=True)
-                        consumption_price_no_power, consumption_price_full_power = optimized_prices
+                        
+                        if len(zone_consumption_series) > 0:
+                            initial_price_full_power, initial_price_no_power = self.initial_prices[(year_min,year_max)][zone][main_sector][0:2]
+                            initial_prices = [initial_price_no_power, initial_price_full_power]
+                            optimized_prices = self._optimize_error(series=zone_consumption_series,
+                                                                    initial_prices=initial_prices, consumption_mode=True)
+                            consumption_price_no_power, consumption_price_full_power = optimized_prices
 
+
+
+#########################"""
                     zone_production_series = self._get_series(
                         years=[y for y in range(year_min, year_max + 1)],
                         countries=countries,
                         detailed_sectors=detailed_sectors,
                         consumption_mode=False)
                     
-                    assert len(zone_production_series) > 0
-                    initial_price_no_power, initial_price_full_power = self.initial_prices[(year_min,year_max)][zone][main_sector][2:4]
-                    initial_prices = [initial_price_no_power, initial_price_full_power]
-                    optimized_prices = self._optimize_error(series=zone_production_series,
+                    if len(zone_production_series) > 0:
+                        initial_price_no_power, initial_price_full_power = self.initial_prices[(year_min,year_max)][zone][main_sector][2:4]
+                        initial_prices = [initial_price_no_power, initial_price_full_power]
+                        optimized_prices = self._optimize_error(series=zone_production_series,
                                                             initial_prices=initial_prices, consumption_mode=False)
-
-                    production_price_no_power, production_price_full_power = optimized_prices
+                        production_price_no_power, production_price_full_power = optimized_prices
                     # Expected:
                     # consumption_price_full_power <= consumption_price_no_power
                     # <= production_price_no_power <= production_price_full_power
                     if is_storage:  # consumption prices are not None
-                        assert isinstance(consumption_price_full_power, (float, int))
-                        assert isinstance(consumption_price_no_power, (float, int))
-                        if consumption_price_no_power > production_price_no_power:
-                            print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
-                                  f"consumption_price_no_power = {consumption_price_no_power} "
-                                  f"> {production_price_no_power} = production_price_no_power\n"
-                                  f"Both are replaced by their average")
-                            consumption_price_no_power = production_price_no_power \
-                                = (consumption_price_no_power + production_price_no_power) / 2
-                        if consumption_price_full_power > consumption_price_no_power:
-                            consumption_price_full_power = consumption_price_no_power
-                            print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
-                                  f"consumption_price_full_power = {consumption_price_full_power} "
-                                  f"> {consumption_price_no_power} = consumption_price_no_power\n"
-                                  f"consumption_price_full_power is replaced by consumption_price_no_power")
+                        if isinstance(consumption_price_full_power, (float, int)) and isinstance(consumption_price_full_power, (float, int)):
+                            if consumption_price_no_power > production_price_no_power:
+                                print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
+                                      f"consumption_price_no_power = {consumption_price_no_power} "
+                                      f"> {production_price_no_power} = production_price_no_power\n"
+                                      f"Both are replaced by their average")
+                                consumption_price_no_power = production_price_no_power \
+                                    = (consumption_price_no_power + production_price_no_power) / 2
+                            if consumption_price_full_power > consumption_price_no_power:
+                                consumption_price_full_power = consumption_price_no_power
+                                print(f"{year_min} to {year_max} | {zone} | {main_sector}: "
+                                      f"consumption_price_full_power = {consumption_price_full_power} "
+                                      f"> {consumption_price_no_power} = consumption_price_no_power\n"
+                                      f"consumption_price_full_power is replaced by consumption_price_no_power")
 
-                    assert isinstance(production_price_no_power, (float, int))
-                    assert isinstance(production_price_full_power,(float, int))
-                    if production_price_no_power > production_price_full_power:
-                        production_price_full_power = production_price_no_power
-                        print(f"Warning: {year_min} to {year_max} | {zone} | {main_sector}: "
-                              f"production_price_no_power = {production_price_no_power} "
-                              f"> {production_price_full_power} = production_price_full_power\n"
-                              f"production_price_full_power is replaced by production_price_no_power")
+                   
+                    if isinstance(production_price_no_power, (float, int)) and isinstance(production_price_full_power,(float, int)):  
+                        if production_price_no_power > production_price_full_power:
+                            production_price_full_power = production_price_no_power
+                            print(f"Warning: {year_min} to {year_max} | {zone} | {main_sector}: "
+                                  f"production_price_no_power = {production_price_no_power} "
+                                  f"> {production_price_full_power} = production_price_full_power\n"
+                                  f"production_price_full_power is replaced by production_price_no_power")
                     results[years_key][zone][main_sector] = [consumption_price_full_power,
                                                              consumption_price_no_power,
                                                              production_price_no_power,
