@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.load_database import load_database_price_user
-from src.load_database import load_database_prod_user
+from src.read_database import read_database_price_user
+from src.read_database import read_database_prod_user
 
 
 # Function adding the missing dates of the database
@@ -120,8 +120,8 @@ if __name__ == "__main__":
     #'AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR','GB', 'GR', 'HU', 'IT', 'LT', 'NL', 'NO', 'PL', 'PT', 'RO','SE', 'SI', 'SK'
     start_year, end_year = 2015, 2015  # years of production database
 
-    prod_users = load_database_prod_user(folder_path_prod, countries, start_year, end_year)
-    price_users = load_database_price_user(folder_path_price, countries, start_year, end_year)
+    prod_users = read_database_prod_user(folder_path_prod, countries, start_year, end_year)
+    price_users = read_database_price_user(folder_path_price, countries, start_year, end_year)
     
     add_missing_dates_prod(prod_users, countries, start_year, end_year)
     add_missing_dates_price(price_users, countries, start_year, end_year)
