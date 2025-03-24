@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from pandas import Timestamp
 
-from src.load_database import load_database_price_user, load_database_prod_user
+from src.read_database import read_database_prod_user, read_database_price_user
 
 
 def get_dict_depth(d: dict):
@@ -80,7 +80,7 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
     read_excel_mock = prod_setup["mocks"]["pandas.read_excel"]
 
     # Run function
-    production_dict = load_database_prod_user(fake_folder_path, country_list, start_year, end_year)
+    production_dict = read_database_prod_user(fake_folder_path, country_list, start_year, end_year)
 
     # Check 'read_excel' calls
     assert read_excel_mock.call_count == 2  # One for each country
@@ -151,7 +151,7 @@ def test_load_database_prod_user_raise_error_if_end_year_is_smaller_than_start_y
 
     # Run function
     with pytest.raises(ValueError) as e:
-        load_database_prod_user(fake_folder_path, country_list, start_year, end_year)
+        read_database_prod_user(fake_folder_path, country_list, start_year, end_year)
 
     # Check 'read_excel' calls
     read_excel_mock.assert_not_called()
@@ -225,7 +225,7 @@ def test_load_database_price_user_creates_expected_dictionary_structure(spot_set
     read_excel_mock = spot_setup["mocks"]["pandas.read_excel"]
 
     # Run function
-    price_dict = load_database_price_user(fake_folder_path, country_list, start_year, end_year)
+    price_dict = read_database_price_user(fake_folder_path, country_list, start_year, end_year)
 
     # Check 'read_excel' calls
     assert read_excel_mock.call_count == 2  # One for each year
@@ -275,7 +275,7 @@ def test_load_database_price_user_raise_error_if_end_year_is_smaller_than_start_
 
     # Run function
     with pytest.raises(ValueError) as e:
-        load_database_price_user(fake_folder_path, country_list, start_year, end_year)
+        read_database_price_user(fake_folder_path, country_list, start_year, end_year)
 
     # Check 'read_excel' calls
     read_excel_mock.assert_not_called()
