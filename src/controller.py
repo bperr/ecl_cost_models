@@ -7,7 +7,7 @@ from pandas import Timestamp
 from scipy.optimize import minimize
 
 from src.database_corrector import add_missing_dates_price, add_missing_dates_prod
-from src.load_database import load_database_price_user, load_database_prod_user
+from src.read_database import read_database_price_user, read_database_prod_user
 from src.read_price_hypothesis import read_price_hypothesis
 from src.read_user_inputs import read_user_inputs
 
@@ -75,9 +75,9 @@ class Controller:
         self.historical_prices = {}
 
         for (year_min, year_max) in self.years:  # For each year group
-            powers_users = load_database_prod_user(folder_path=power_path, country_list=countries,
+            powers_users = read_database_prod_user(folder_path=power_path, country_list=countries,
                                                    start_year=year_min, end_year=year_max)
-            prices_users = load_database_price_user(folder_path=price_path, country_list=countries,
+            prices_users = read_database_price_user(folder_path=price_path, country_list=countries,
                                                     start_year=year_min, end_year=year_max)
 
             add_missing_dates_prod(powers_users, countries, year_min, year_max)

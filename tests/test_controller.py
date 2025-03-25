@@ -42,9 +42,9 @@ def spot_setup():
 
     # This line tells python so emulate 'load_database_price_user' function
     # Therefore, calling 'load_database_price_user' will return the expected dataframe
-    load_price_mock = patch("src.controller.load_database_price_user", return_value=spot_dict).start()
+    read_price_mock = patch("src.controller.read_database_price_user", return_value=spot_dict).start()
 
-    yield {'mock': load_price_mock}
+    yield {'mock': read_price_mock}
 
     patch.stopall()  # Cancel the patch command on 'load_database_price_user' (or any function)
 
@@ -73,10 +73,10 @@ def prod_setup():
     # This line tells python so emulate 'load_database_prod_user' function
     # Therefore, calling 'load_database_prod_user' will return the expected dataframe
 
-    load_power_mock = patch("src.controller.load_database_prod_user",
+    read_power_mock = patch("src.controller.read_database_prod_user",
                             return_value={"ES": es_prod_dict, "FR": fr_prod_dict, "PT": pt_prod_dict}).start()
 
-    yield {'mock': load_power_mock}
+    yield {'mock': read_power_mock}
 
     patch.stopall()  # Cancel the patch command on 'load_database_prod_user' (or any function)
 

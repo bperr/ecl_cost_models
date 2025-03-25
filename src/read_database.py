@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def load_database_prod_user(folder_path: Path, country_list: list[str], start_year: int, end_year: int) -> dict:
+def read_database_prod_user(folder_path: Path, country_list: list[str], start_year: int, end_year: int) -> dict:
     if end_year < start_year:
         raise ValueError("End year cannot be before start year")
 
@@ -36,7 +36,7 @@ def load_database_prod_user(folder_path: Path, country_list: list[str], start_ye
     return data_dict_prod_user
 
 
-def load_database_price_user(folder_path: Path, country_list: list[str], start_year: int, end_year: int) -> dict:
+def read_database_price_user(folder_path: Path, country_list: list[str], start_year: int, end_year: int) -> dict:
     if end_year < start_year:
         raise ValueError("End year cannot be before start year")
 
@@ -75,8 +75,8 @@ if __name__ == "__main__":
                       'SE', 'SI', 'SK']
     start_year, end_year = 2015, 2015  # years of production database
 
-    prod_users = load_database_prod_user(folder_path_prod, countries_list, start_year, end_year)
-    price_users = load_database_price_user(folder_path_price, countries_list, start_year, end_year)
+    prod_users = read_database_prod_user(folder_path_prod, countries_list, start_year, end_year)
+    price_users = read_database_price_user(folder_path_price, countries_list, start_year, end_year)
 
     time = pd.to_datetime("2015-02-20 14:00:00")
     country = "FR"
