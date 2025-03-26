@@ -213,7 +213,7 @@ class Controller:
         res = minimize(error_function, initial_prices, tol=1e-8,
                        options={'disp': True}, constraints=constraints)
 
-        return float(res.x[0]), float(res.x[1])
+        return round(float(res.x[0]),0), round(float(res.x[1]),0)
 
     def _export_results(self, results: dict):
 
