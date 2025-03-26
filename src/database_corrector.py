@@ -43,7 +43,7 @@ def add_missing_dates_prod(production: dict, countries_list: list[str], start_ye
 
                     else : #Several dates are missing in a row from the start date
                         for power_plant in power_plant_list: 
-                            production[country][power_plant][current_date] = 0
+                            production[country][power_plant][current_date] = None
 
 
                 elif current_date == end_date :
@@ -52,7 +52,7 @@ def add_missing_dates_prod(production: dict, countries_list: list[str], start_ye
                 
                 else :
                     
-                    if next_date in production[country][first_power_plant]:  #Check if creating a power value by averaging the previous and the next values is possible
+                    if next_date in production[country][first_power_plant] and production[country][first_power_plant][previous_date] is not None:  #Check if creating a power value by averaging the previous and the next values is possible
                         
                         for power_plant in power_plant_list:
                             production[country][power_plant][current_date] = (production[country][power_plant][previous_date] + production[country][power_plant][next_date])/2
@@ -89,7 +89,7 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
 
                 else : #Several dates are missing in a row from the start date
                     for country in countries_list: 
-                        price[country][current_date] = 0
+                        price[country][current_date] = None
 
             elif current_date == end_date :
                 for country in countries_list: 
@@ -98,7 +98,7 @@ def add_missing_dates_price(price: dict, countries_list: list[str], start_year: 
                     
             else : 
                 
-                if next_date in price[first_country]:  #Check if creating a price value by averaging the previous and the next values is possible
+                if next_date in price[first_country] and price[first_country][previous_date] is not None:  #Check if creating a price value by averaging the previous and the next values is possible
                 
                     for country in countries_list:
                         price[country][current_date] = (price[country][previous_date] + price[country][next_date])/2
