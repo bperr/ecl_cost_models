@@ -12,31 +12,35 @@ Les élèves de l'ECL ayant participés à ce projet sont les suivants :
 - Thibault SUATTON (E21)
 - Jeremy POUGET (E21)
 
+Les commanditaires de SuperGrid Institute ayant pilotés le projet sont :
+- Nicolas BARLA
+- Baptiste PERREYON
+
 ## Présentation du projet
 
-L'objectif de ce projet est de fournir une base de données et un outil Python permettant d'optimiser des hypothèses de prix d'appel et d'offre pour les charges, générateurs et moyens de stockage du réseau électrique. L'objectif étant de pouvoir appliquer l'outil à différents pays d'Europe, différentes filières et différentes périodes temporelles.
-
-La formulation des hypothèses de prix en entrée passe par la génération de scénarios de coûts d’investissements et de coûts d’opération par filière.
+L'objectif de ce projet est de fournir un outil Python permettant d'optimiser des hypothèses de prix passés d'appel et d'offre pour charges, générateurs et moyens de stockage du réseau électrique. L'objectif étant de pouvoir appliquer l'outil à différents pays d'Europe, différentes filières et différentes périodes temporelles. 
+Cet outil repose sur une base de données qui sera présentée par la suite.
 
 ## Présentation de la BDD 
 L'outil Python, présenté par la suite, utilise comme support une BDD (Base De Données) qui a été conçue à partir des data d'EnergyGraph et de l'ENTSOE. 
 Cette-dernière n'est pas présente sur ce dépot.
 Elle est constituée de deux dossiers :
-1. La production par pays, filière et par année sur la plage 2015-2019 (en MW)
-2. Le prix Spot de l’électricité par zone économique sur la plage 2015-2023 (en €/MWh)
+1. La production par pays, filière et heure sur la plage 2015-2019 (en MW)
+2. Le prix Spot de l’électricité par zone économique et heure sur la plage 2015-2023 (en €/MWh)
 
 ## Présentation de l'outil Python
 
-L' outil Python a pour objectif d'ajuster, optimiser des hypothèses utilisateurs de prix d'appel et d'offre par filière et pays. Pour cela, l'outil compare les données historiques comprises dans la BDD avec les hypothèses de prix utilisateur et utilise une méthode d'optimisation de la bibliothèque scipy de Python. Son fonctionnement est détaillé dans le schéma ci-dessous. Les hypothèses de prix sont alors des paramètres d'entrée permettant d'initialiser l'optimisation. Ils doivent être choisis judicieusement afin d'éviter les effets de plateau par exemple}.
+L' outil Python a pour objectif d'ajuster, optimiser des hypothèses utilisateurs de prix d'appel et d'offre par filière et pays. Pour cela, l'outil compare les données historiques contenues dans la BDD avec les hypothèses de prix utilisateur et utilise une méthode d'optimisation de la bibliothèque scipy de Python. Son fonctionnement est détaillé dans le schéma ci-dessous. Les hypothèses de prix sont alors des paramètres d'entrée permettant d'initialiser l'optimisation. Ils doivent être choisis judicieusement afin d'éviter les effets de plateau par exemple.
 
 Le schéma global de l'outil est le suivant : 
 
 ![image](https://github.com/user-attachments/assets/3749f81b-47e5-42ac-806a-31ee001efd3d)
 
 ## Méthodologie mise en place 
-La méthode adopté est la suivante : l'utilisateur renseigne en entrée deux valeurs de prix seuils pour chacun des moyens de production.
+L'utilisateur, en entrée de l'outil, renseigne, pour chaque zone, secteur et plage temporelle considérés deux valeurs de prix seuils.
+L'outil, après optimisation, renverra ces deux valeurs ajustées.
 
-L'hypothèse faite est qu'**en dessous de la première valeur de coût marginal (Prix seuil 0%), aucune centrale de ce type ne produit, et qu'au-dessus de la seconde (Prix seuil 100%), toutes les centrales sont prêtes à produire**. Entre ces deux valeurs, une fonction affine détermine la part des centrales prêtes à produire. Cette méthode permet de prendre en compte la diversité de coûts marginaux pouvant exister au sein d'un groupe de centrales ayant le même mode de production d'énergie.
+L'hypothèse faite est qu'**en dessous de la première valeur de coût marginal (Prix seuil 0%), aucune centrale de ce type ne produit, et qu'au-dessus de la seconde (Prix seuil 100%), toutes les centrales sont prêtes à produire**. Entre ces deux valeurs, une fonction affine détermine la part des centrales prêtes à produire. Cette méthode permet de prendre en compte la diversité de coûts marginaux pouvant exister au sein d'un groupe de centrales ayant le même mode de production d'énergie. Le raisonnement inverse peut être utilisé dans le cas des charges.
 
 ### Par conséquent, le modèle de prix devient :
 
@@ -81,7 +85,7 @@ Ces deux fichiers sont disponibles dans le dossier *"Template"* de ce dépôt.
 
 ## Utilisation et lancement de la simulation 
 
-Vous pouvez trouver ci-dessoue le processus de paramétrage et d'utilisation de l'outil.
+Vous pouvez trouver ci-dessous le processus de paramétrage et d'utilisation de l'outil.
 
 ### 1. Paramétrage de la simulation dans le fichier Excel *User Inputs*
 - Déclaration des pays & modes de production à uploader depuis la BDD.
