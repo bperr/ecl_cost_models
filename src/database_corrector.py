@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.read_database import read_database_price_user
-from src.read_database import read_database_prod_user
+from read_database import read_database_price_user
+from read_database import read_database_prod_user
 
 
 # Function adding the missing dates of the database

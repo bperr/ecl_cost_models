@@ -61,13 +61,13 @@ def read_database_price_user(folder_path: Path, country_list: list[str], start_y
 
 
 def zones_to_country(df: pd.DataFrame) -> pd.Series:
-    return df.mean(axis=1)
-
+    df_clean = df.apply(pd.to_numeric, errors='coerce')  # convert unconvertible strings into NaN
+    return df_clean.mean(axis=1)
 
 # Utilization example
 if __name__ == "__main__":
     # db_path = Path(__file__).parents[1] / "instance" / "database"
-    db_path = Path(r"C:\Users\cgoas\OneDrive\Documents\S9\Projet EN Supergrid\BDD\2. Base De Données")
+    db_path = db_dir
     folder_path_prod = db_path / "Production par pays et par filière 2015-2019"
     folder_path_price = db_path / "Prix spot par an et par zone 2015-2019"
     countries_list = ['AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',

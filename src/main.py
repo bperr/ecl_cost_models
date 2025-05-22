@@ -8,8 +8,8 @@ from controller import Controller
 
 
 if __name__=="__main__":
-    work_dir = Path("C:/.../wk dir")
-    db_dir = Path("C:/.../database")
+    work_dir = Path("C:/Users/a.faivre/PycharmProjects/ECL cost models/Working")
+    db_dir = Path("C:/Users/a.faivre/PycharmProjects/ECl cost models/Database")
 
     controller = Controller(work_dir=work_dir, db_dir=db_dir)
     results = controller.run(export_to_excel=True)

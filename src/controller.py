@@ -6,10 +6,10 @@ import pandas as pd
 from pandas import Timestamp
 from scipy.optimize import minimize
 
-from src.database_corrector import add_missing_dates_price, add_missing_dates_prod
-from src.read_database import read_database_price_user, read_database_prod_user
-from src.read_price_hypothesis import read_price_hypothesis
-from src.read_user_inputs import read_user_inputs
+from database_corrector import add_missing_dates_price, add_missing_dates_prod
+from read_database import read_database_price_user, read_database_prod_user
+from read_price_hypothesis import read_price_hypothesis
+from read_user_inputs import read_user_inputs
 
 
 class Controller:
@@ -50,8 +50,8 @@ class Controller:
          }
         """
 
-        hyp_user_path = self.work_dir / "User_inputs-v2.xlsx"
-        hyp_prices_path = self.work_dir / "Prices_inputs-v2.xlsx"
+        hyp_user_path = self.work_dir / "User_inputs.xlsx"
+        hyp_prices_path = self.work_dir / "Prices_inputs.xlsx"
 
         user_inputs = read_user_inputs(file_path=hyp_user_path)
         self.years = user_inputs[0]
