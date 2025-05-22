@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 from pandas import Timestamp
 from scipy.optimize import minimize
 
@@ -170,7 +171,7 @@ class Controller:
                 series[time_step] = {"price": sum(prices) / len(prices),
                                      "power factor": power / power_rating,
                                      "power": power}
-                
+
         return series
 
     def _optimize_error(self, initial_prices: list, series: dict[Timestamp, dict[str, float]], consumption_mode: bool) \
@@ -292,6 +293,9 @@ class Controller:
                                                                     initial_prices=initial_prices,
                                                                     consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
+                            title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
+                            self.plot_result(series=zone_consumption_series, price_min=consumption_price_full_power,
+                                             price_max=consumption_price_no_power, title=title, consumption_mode=True)
 
                     # Optimise production prices
                     zone_production_series = self._get_series(
@@ -307,6 +311,9 @@ class Controller:
                         optimized_prices = self._optimize_error(series=zone_production_series,
                                                                 initial_prices=initial_prices, consumption_mode=False)
                         production_price_no_power, production_price_full_power = optimized_prices
+                        title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
+                        self.plot_result(series=zone_production_series, price_min=production_price_no_power,
+                                         price_max=production_price_full_power, title=title, consumption_mode=False)
 
                     # Expected:
                     # consumption_price_full_power <= consumption_price_no_power
@@ -346,3 +353,18 @@ class Controller:
         if export_to_excel:
             self._export_results(results=results)
         return results
+
+    @staticmethod
+    def plot_result(series: dict, price_min: float, price_max: float, title: str, consumption_mode: bool):
+        fig = plt.figure()
+        prices = np.array([series_data["price"] for series_data in series.values()])
+        powers = np.array([series_data["power factor"] for series_data in series.values()])
+        plt.scatter(prices, powers, s=10)
+        model_x = [0, price_min, price_max, max(max(prices), price_max)]
+        if consumption_mode:
+            model_y = [-1, -1, 0, 0]
+        else:
+            model_y = [0, 0, 1, 1]
+        plt.plot(model_x, model_y, c='red')
+        fig.suptitle(title, fontsize=10)
+        plt.show()
