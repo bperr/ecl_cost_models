@@ -9,7 +9,6 @@ from scipy.optimize import minimize
 
 from database_corrector import add_missing_dates_price, add_missing_dates_prod
 from read_database import read_database_price_user, read_database_prod_user
-from read_price_hypothesis import read_price_hypothesis
 from read_user_inputs import read_user_inputs
 
 
@@ -23,7 +22,6 @@ class Controller:
         self.sectors = dict()
         self.storages = set()
         self.years = list()
-        self.initial_prices = dict()
 
         # Updated in self._read_database()
         self.historical_powers = dict()
@@ -36,19 +34,12 @@ class Controller:
     def _read_user_inputs(self):
         """
         Read user inputs of group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
-        Then read initial prices hypothesis
 
         Example of stored data dictionary:
          - self.zones =  {"IBR": ["ES", "PT"], "FRA": ["FR"]}
          - self.sectors = {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]}
          - self.storages=  {Storage}
          - self.years =  [(2015, 2016)]
-         - self.initial_prices = {
-            (2015, 2016): {
-                "IBR": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]},
-                "FRA": {"Fossil": [None, None, 40, 60], "Storage": [10, 20, 30, 40]}
-                }
-         }
         """
 
         hyp_user_path = self.work_dir / "User_inputs.xlsx"
@@ -59,10 +50,6 @@ class Controller:
         self.zones = user_inputs[1]
         self.sectors = user_inputs[2]
         self.storages = user_inputs[3]
-
-        self.initial_prices = read_price_hypothesis(file_path=hyp_prices_path, years=self.years,
-                                                    countries_group=self.zones, sectors_group=self.sectors,
-                                                    storages=self.storages)
 
     def _read_database(self):
         """
@@ -174,17 +161,14 @@ class Controller:
 
         return series
 
-    def _optimize_error(self, initial_prices: list, series: dict[Timestamp, dict[str, float]], consumption_mode: bool) \
+    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], consumption_mode: bool) \
             -> tuple:
         """
         Optimise the price model for a producer or a consumer.
-        :param initial_prices: Initialization of the price model (price_no_power, price_full_power)
         :param series: Database extraction: {Time step: {"price": price, "power factor": power factor, "power": power}}
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
         :return: (price_no_power, price_full_power)
         """
-        initial_prices = np.array(initial_prices)
-
         def error_function(x: np.array):
             """
             Compute an error associated to a price model
@@ -198,8 +182,11 @@ class Controller:
                 power_factor_model = self._compute_power_factor(
                     price=price, price_no_power=x[0], price_full_power=x[1], consumption_mode=consumption_mode)
                 errors.append(abs(expected_power_factor - power_factor_model))
-            return sum(errors) / len(errors)
 
+            mean_loss= sum(errors) / len(errors)
+            return mean_loss
+
+        # Definition of constraints
         if consumption_mode:
             constraints = [
                 {'type': "ineq", 'fun': lambda x: x[1]},  # min_price must be positive
@@ -208,10 +195,22 @@ class Controller:
         else:
             constraints = [
                 {'type': "ineq", 'fun': lambda x: x[0]},  # min_price must be positive
-                {'type': "ineq", 'fun': lambda x: x[1] - x[0]}  # max_price-min_price must be positive
+                {'type': "ineq", 'fun': lambda x: x[1] - x[0]} # max_price-min_price must be positive
             ]
 
-        res = minimize(error_function, initial_prices, tol=1e-8,
+        # Prices initialisation
+        potential_prices_init = []
+        for potential_p0 in range(0, 100, 10):
+            for potential_p1 in range(10, 150, 10):
+                if potential_p0 < potential_p1:
+                    loss = error_function([potential_p0, potential_p1])
+                    potential_prices_init.append((loss, potential_p0, potential_p1))
+
+        prices_init = min(potential_prices_init)
+        print(f"Prices for initialisation: p0={prices_init[1]}, p1={prices_init[2]}, loss={prices_init[0]}")
+
+        # Optimisation of the prices - minimization of the error function
+        res = minimize(error_function, x0=np.array([prices_init[1], prices_init[2]]), tol=1e-8,
                        options={'disp': True}, constraints=constraints)
 
         return round(float(res.x[0]),0), round(float(res.x[1]),0)
@@ -286,11 +285,7 @@ class Controller:
                             consumption_mode=True)
 
                         if len(zone_consumption_series) > 0:
-                            initial_price_full_power, initial_price_no_power = \
-                                self.initial_prices[(year_min, year_max)][zone][main_sector][0:2]
-                            initial_prices = [initial_price_no_power, initial_price_full_power]
                             optimized_prices = self._optimize_error(series=zone_consumption_series,
-                                                                    initial_prices=initial_prices,
                                                                     consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
                             title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
@@ -305,11 +300,7 @@ class Controller:
                         consumption_mode=False)
 
                     if len(zone_production_series) > 0:
-                        initial_price_no_power, initial_price_full_power = \
-                            self.initial_prices[(year_min, year_max)][zone][main_sector][2:4]
-                        initial_prices = [initial_price_no_power, initial_price_full_power]
-                        optimized_prices = self._optimize_error(series=zone_production_series,
-                                                                initial_prices=initial_prices, consumption_mode=False)
+                        optimized_prices = self._optimize_error(series=zone_production_series, consumption_mode=False)
                         production_price_no_power, production_price_full_power = optimized_prices
                         title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
                         self.plot_result(series=zone_production_series, price_min=production_price_no_power,
@@ -366,5 +357,8 @@ class Controller:
         else:
             model_y = [0, 0, 1, 1]
         plt.plot(model_x, model_y, c='red')
+        plt.xlim(-50, 200)
+        plt.xlabel("Prix (€)")
+        plt.ylabel("Taux de sollicitation")
         fig.suptitle(title, fontsize=10)
         plt.show()
