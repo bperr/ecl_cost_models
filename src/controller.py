@@ -6,6 +6,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pandas import Timestamp
 from scipy.optimize import minimize
+from scipy.stats import norm
 
 from database_corrector import add_missing_dates_price, add_missing_dates_prod
 from read_database import read_database_price_user, read_database_prod_user
@@ -40,16 +41,18 @@ class Controller:
          - self.sectors = {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]}
          - self.storages=  {Storage}
          - self.years =  [(2015, 2016)]
+         - self.grid_bounds = [(p0 min, p0 max, p100 min, p100 max, step grid crossing)]
+
         """
 
         hyp_user_path = self.work_dir / "User_inputs.xlsx"
-        hyp_prices_path = self.work_dir / "Prices_inputs.xlsx"
 
         user_inputs = read_user_inputs(file_path=hyp_user_path)
         self.years = user_inputs[0]
-        self.zones = user_inputs[1]
-        self.sectors = user_inputs[2]
-        self.storages = user_inputs[3]
+        self.grid_bounds = user_inputs[1]
+        self.zones = user_inputs[2]
+        self.sectors = user_inputs[3]
+        self.storages = user_inputs[4]
 
     def _read_database(self):
         """
@@ -115,7 +118,7 @@ class Controller:
         :param countries: List of countries
         :param detailed_sectors: List of detailed sectors
         :param consumption_mode: If True only the negative powers are considered. Else only the positive powers are.
-        :return: {Time step: {"price": price, "power factor": power factor, "power": power}
+        :return: {Time step: {"price": price, "max power": max power, "power": power}
         """
         # {time_step: power} associated to the input group of years, countries and sectors
         power_series = dict()
@@ -136,11 +139,11 @@ class Controller:
             else:
                 warnings.warn(f"{country} not in historical power data")
 
-        # {time_step: price, power factor, power} associated to the input group of years, countries and sectors
+        # {time_step: price, max power, power} associated to the input group of years, countries and sectors
         series = dict()
-        power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
+        max_power = max(abs(power) for power in power_series.values())  # power rating must be positive
 
-        if power_rating == 0:  # The power plant does not exist in the country
+        if max_power == 0:  # The power plant does not exist in the country
             return {}
 
         for time_step in power_series.keys():
@@ -156,35 +159,56 @@ class Controller:
             power = power_series[time_step]
             if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
                 series[time_step] = {"price": sum(prices) / len(prices),
-                                     "power factor": power / power_rating,
+                                     "max power": max_power,
                                      "power": power}
 
         return series
 
-    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], consumption_mode: bool) \
+    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], grid_bounds, consumption_mode: bool) \
             -> tuple:
         """
         Optimise the price model for a producer or a consumer.
-        :param series: Database extraction: {Time step: {"price": price, "power factor": power factor, "power": power}}
+        :param series: Database extraction: {Time step: {"price": price, "max power": max power, "power": power}}
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
         :return: (price_no_power, price_full_power)
         """
+
+        # Extract historical values (mean and standard deviation)
+        historical_power = np.array([data["power"] for data in series.values()])
+        mu_hist, sigma_hist = np.mean(historical_power), np.std(historical_power)
+
         def error_function(x: np.array):
             """
-            Compute an error associated to a price model
-            :param x: (price_no_power, price_full_power)
-            :return: Mean absolute difference between modelled and expected power factor
+            Compute error between the modeled and historical power *called* distributions,
+            using statistical moments (mean and std) of power.
+
+            :param x: [price_no_power, price_full_power]
+            :return: error based on difference in moments
             """
-            errors = list()
+            modeled_power_called = []
+
             for time_step, data in series.items():
                 price = data["price"]
-                expected_power_factor = data["power factor"]
-                power_factor_model = self._compute_power_factor(
-                    price=price, price_no_power=x[0], price_full_power=x[1], consumption_mode=consumption_mode)
-                errors.append(abs(expected_power_factor - power_factor_model))
+                max_power = data["max power"]
 
-            mean_loss= sum(errors) / len(errors)
-            return mean_loss
+                power_factor_model = self._compute_power_factor(
+                    price=price,
+                    price_no_power=x[0],
+                    price_full_power=x[1],
+                    consumption_mode=consumption_mode
+                )
+
+                power = power_factor_model * max_power  # Power at time t (time_step) obtained with price model
+                modeled_power_called.append(power)
+
+            modeled_power_called = np.array(modeled_power_called)
+            mu_model, sigma_model = np.mean(modeled_power_called), np.std(modeled_power_called)
+
+            mean_error = (mu_model - mu_hist) ** 2
+            std_error = (sigma_model - sigma_hist) ** 2
+
+            total_error = np.sqrt(mean_error + std_error)
+            return total_error
 
         # Definition of constraints
         if consumption_mode:
@@ -199,15 +223,31 @@ class Controller:
             ]
 
         # Prices initialisation
+        p0_grid_min, p0_grid_max, p100_grid_min, p100_grid_max, step_prices_grid = grid_bounds[0]
+        c100_grid_min, c100_grid_max, c0_grid_min, c0_grid_max, _ = grid_bounds[0]
         potential_prices_init = []
-        for potential_p0 in range(0, 100, 10):
-            for potential_p1 in range(10, 150, 10):
-                if potential_p0 < potential_p1:
-                    loss = error_function([potential_p0, potential_p1])
-                    potential_prices_init.append((loss, potential_p0, potential_p1))
+
+        if not consumption_mode: # production mode
+            min_price_no_power, max_price_no_power = p0_grid_min, p0_grid_max
+            min_price_full_power, max_price_full_power = p100_grid_min, p100_grid_max
+            prices_in_order = lambda x, y: x <= y
+            label = "p"
+        else: # consumption mode
+            min_price_no_power, max_price_no_power = c0_grid_min, c0_grid_max
+            min_price_full_power, max_price_full_power = c100_grid_min, c100_grid_max
+            prices_in_order = lambda x, y: y <= x
+            label = "c"
+
+        for price_no_power in range(min_price_no_power, max_price_no_power, step_prices_grid):
+            for price_full_power in range(min_price_full_power, max_price_full_power, step_prices_grid):
+                if prices_in_order(price_no_power, price_full_power): # Half-grid crossing
+                    loss = error_function([price_no_power, price_full_power])
+                    print(f"Loss for {label}0={price_no_power} and {label}100={price_full_power} is {loss}")
+                    potential_prices_init.append((loss, price_no_power, price_full_power))
 
         prices_init = min(potential_prices_init)
-        print(f"Prices for initialisation: p0={prices_init[1]}, p1={prices_init[2]}, loss={prices_init[0]}")
+        print(
+            f"Prices for initialisation: {label}0={prices_init[1]}, {label}100={prices_init[2]}, loss={prices_init[0]}")
 
         # Optimisation of the prices - minimization of the error function
         res = minimize(error_function, x0=np.array([prices_init[1], prices_init[2]]), tol=1e-8,
@@ -286,6 +326,7 @@ class Controller:
 
                         if len(zone_consumption_series) > 0:
                             optimized_prices = self._optimize_error(series=zone_consumption_series,
+                                                                    grid_bounds=self.grid_bounds,
                                                                     consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
                             title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
@@ -300,7 +341,7 @@ class Controller:
                         consumption_mode=False)
 
                     if len(zone_production_series) > 0:
-                        optimized_prices = self._optimize_error(series=zone_production_series, consumption_mode=False)
+                        optimized_prices = self._optimize_error(series=zone_production_series, grid_bounds=self.grid_bounds,consumption_mode=False)
                         production_price_no_power, production_price_full_power = optimized_prices
                         title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
                         self.plot_result(series=zone_production_series, price_min=production_price_no_power,
@@ -349,7 +390,7 @@ class Controller:
     def plot_result(series: dict, price_min: float, price_max: float, title: str, consumption_mode: bool):
         fig = plt.figure()
         prices = np.array([series_data["price"] for series_data in series.values()])
-        powers = np.array([series_data["power factor"] for series_data in series.values()])
+        powers = np.array([series_data["power"]/series_data["max power"] for series_data in series.values()])
         plt.scatter(prices, powers, s=10)
         model_x = [0, price_min, price_max, max(max(prices), price_max)]
         if consumption_mode:
