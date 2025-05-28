@@ -161,12 +161,12 @@ class Controller:
 
         return series
 
-    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], grid_init: tuple, consumption_mode: bool) \
+    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], prices_init: tuple, consumption_mode: bool) \
             -> tuple:
         """
         Optimise the price model for a producer or a consumer.
         :param series: Database extraction: {Time step: {"price": price, "max power": max power, "power": power}}
-        :param grid_init: prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
+        :param prices_init: prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
         :return: (price_no_power, price_full_power)
         """
@@ -216,26 +216,25 @@ class Controller:
 
         # Prices initialisation
 
-        p0_grid_min, p0_grid_max, p100_grid_min, p100_grid_max, step_prices_grid = grid_init
-        c100_grid_min, c100_grid_max, c0_grid_min, c0_grid_max, _ = grid_init
+        p0_init_min, p0_init_max, p100_init_min, p100_init_max, step_prices_init = prices_init
+        c100_init_min, c100_init_max, c0_init_min, c0_init_max, _ = prices_init
         potential_prices_init = []
 
         if not consumption_mode: # production mode
-            min_price_no_power, max_price_no_power = p0_grid_min, p0_grid_max
-            min_price_full_power, max_price_full_power = p100_grid_min, p100_grid_max
+            min_price_no_power, max_price_no_power = p0_init_min, p0_init_max
+            min_price_full_power, max_price_full_power = p100_init_min, p100_init_max
             prices_in_order = lambda x, y: x <= y
             label = "p"
         else: # consumption mode
-            min_price_no_power, max_price_no_power = c0_grid_min, c0_grid_max
-            min_price_full_power, max_price_full_power = c100_grid_min, c100_grid_max
+            min_price_no_power, max_price_no_power = c0_init_min, c0_init_max
+            min_price_full_power, max_price_full_power = c100_init_min, c100_init_max
             prices_in_order = lambda x, y: y <= x
             label = "c"
 
-        for price_no_power in range(min_price_no_power, max_price_no_power, step_prices_grid):
-            for price_full_power in range(min_price_full_power, max_price_full_power, step_prices_grid):
-                if prices_in_order(price_no_power, price_full_power): # Half-grid crossing
+        for price_no_power in range(min_price_no_power, max_price_no_power + step_prices_init, step_prices_init):
+            for price_full_power in range(min_price_full_power, max_price_full_power + step_prices_init, step_prices_init):
+                if prices_in_order(price_no_power, price_full_power):
                     loss = error_function([price_no_power, price_full_power])
-                    print(f"Loss for {label}0={price_no_power} and {label}100={price_full_power} is {loss}")
                     potential_prices_init.append((loss, price_no_power, price_full_power))
 
         prices_init = min(potential_prices_init)
@@ -318,7 +317,7 @@ class Controller:
                             consumption_mode=True)
 
                         if len(zone_consumption_series) > 0:
-                            optimized_prices = self._optimize_error(series=zone_consumption_series, grid_init=grid_init,
+                            optimized_prices = self._optimize_error(series=zone_consumption_series, prices_init=grid_init,
                                                                     consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
                             title = f"{year_min}-{year_max} - {zone} - {main_sector} - Consumption"
@@ -333,7 +332,7 @@ class Controller:
                         consumption_mode=False)
 
                     if len(zone_production_series) > 0:
-                        optimized_prices = self._optimize_error(series=zone_production_series,grid_init=grid_init,
+                        optimized_prices = self._optimize_error(series=zone_production_series, prices_init=grid_init,
                                                                 consumption_mode=False)
                         production_price_no_power, production_price_full_power = optimized_prices
                         title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"

@@ -33,25 +33,19 @@ def read_user_inputs(file_path: Path) -> tuple[
                 raise ValueError(f"Missing columns in '{sheet_name}' sheet: {missing_columns}")
 
         # --- Extract years ---
-        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int, 'p0 min': int, 'p0 max': int,
-                                             'p100 min': int, 'p100 max': int, 'step grid crossing': int})
-        check_columns(df_years, {'Year min', 'Year max', 'p0 min', 'p0 max', 'p100 min', 'p100 max',
-                                 'step grid crossing'}, 'Years')
+        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int, 'Min initial price': int, 'Max initial price': int})
+        check_columns(df_years, {'Year min', 'Year max', 'Min initial price', 'Max initial price'}, 'Years')
 
         ## Data validation ##
         if (df_years['Year min'] > df_years['Year max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'Year min' must be <= 'Year max' for all rows.")
-        if (df_years['p0 min'] > df_years['p0 max']).any():
-            raise ValueError("Invalid data in 'Years' sheet: 'p0 min' must be <= 'p0 max' for all rows.")
-        if (df_years['p100 min'] > df_years['p100 max']).any():
-            raise ValueError("Invalid data in 'Years' sheet: 'p100 min' must be <= 'p100 max' for all rows.")
-        if (df_years['p0 min'] > df_years['p100 min']).any():
-            raise ValueError("Invalid data in 'Years' sheet: 'p0 min' must be <= 'p100 min' for all rows.")
-        if (df_years['p100 max'] > df_years['p100 max']).any():
-            raise ValueError("Invalid data in 'Years' sheet: 'p0 max' must be <= 'p100 max' for all rows.")
+        if (df_years['Min initial price'] > df_years['Max initial price']).any():
+            raise ValueError("Invalid data in 'Years' sheet: 'Min initial price' must be <= 'Max initial price' for all rows.")
 
-        years = list(zip(df_years['Year min'], df_years['Year max'], df_years['p0 min'], df_years['p0 max'],df_years['p100 min'],
-                               df_years['p100 max'],df_years['step grid crossing']))
+        nb_initial_prices = 10
+        df_years['step grid crossing'] = ((df_years['Max initial price'] - df_years['Min initial price']) / nb_initial_prices).round().astype(int)
+        years = list(zip(df_years['Year min'], df_years['Year max'], df_years['Min initial price'], df_years['Max initial price'],df_years['Min initial price'],
+                               df_years['Max initial price'],df_years['step grid crossing']))
 
         # --- Extract country groups ---
         df_zones = xls.parse('Zones', dtype=str)
