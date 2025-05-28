@@ -33,31 +33,24 @@ def read_user_inputs(file_path: Path) -> tuple[
                 raise ValueError(f"Missing columns in '{sheet_name}' sheet: {missing_columns}")
 
         # --- Extract years ---
-        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int})
-        check_columns(df_years, {'Year min', 'Year max'}, 'Years')
+        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int, 'p0 min': int, 'p0 max': int,
+                                             'p100 min': int, 'p100 max': int, 'step grid crossing': int})
+        check_columns(df_years, {'Year min', 'Year max', 'p0 min', 'p0 max', 'p100 min', 'p100 max',
+                                 'step grid crossing'}, 'Years')
 
         ## Data validation ##
         if (df_years['Year min'] > df_years['Year max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'Year min' must be <= 'Year max' for all rows.")
-
-        years = list(zip(df_years['Year min'], df_years['Year max']))
-
-        # --- Extract grid bounds for price initialisation ---
-        df_grid_bounds = xls.parse('Years', dtype={'p0 min': int, 'p0 max': int,
-                                                   'p100 min': int, 'p100 max': int, 'step grid crossing': int})
-        check_columns(df_years, {'p0 min', 'p0 max', 'p100 min', 'p100 max', 'step grid crossing'}, 'Years')
-
-        ## Data validation ##
-        if (df_grid_bounds['p0 min'] > df_grid_bounds['p0 max']).any():
+        if (df_years['p0 min'] > df_years['p0 max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'p0 min' must be <= 'p0 max' for all rows.")
-        if (df_grid_bounds['p100 min'] > df_grid_bounds['p100 max']).any():
+        if (df_years['p100 min'] > df_years['p100 max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'p100 min' must be <= 'p100 max' for all rows.")
-        if (df_grid_bounds['p0 min'] > df_grid_bounds['p100 min']).any():
+        if (df_years['p0 min'] > df_years['p100 min']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'p0 min' must be <= 'p100 min' for all rows.")
-        if (df_grid_bounds['p100 max'] > df_grid_bounds['p100 max']).any():
+        if (df_years['p100 max'] > df_years['p100 max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'p0 max' must be <= 'p100 max' for all rows.")
 
-        grid_bounds = list(zip(df_years['p0 min'], df_years['p0 max'],df_years['p100 min'],
+        years = list(zip(df_years['Year min'], df_years['Year max'], df_years['p0 min'], df_years['p0 max'],df_years['p100 min'],
                                df_years['p100 max'],df_years['step grid crossing']))
 
         # --- Extract country groups ---
@@ -87,7 +80,7 @@ def read_user_inputs(file_path: Path) -> tuple[
                 f"The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}",
                 stacklevel=2)
 
-        return years, grid_bounds, countries_group, sectors_group, storages
+        return years, countries_group, sectors_group, storages
 
     except Exception as e:
         raise ValueError(f"Error while reading the Excel file: {e}")

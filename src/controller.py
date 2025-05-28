@@ -6,7 +6,6 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pandas import Timestamp
 from scipy.optimize import minimize
-from scipy.stats import norm
 
 from database_corrector import add_missing_dates_price, add_missing_dates_prod
 from read_database import read_database_price_user, read_database_prod_user
@@ -40,8 +39,7 @@ class Controller:
          - self.zones =  {"IBR": ["ES", "PT"], "FRA": ["FR"]}
          - self.sectors = {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]}
          - self.storages=  {Storage}
-         - self.years =  [(2015, 2016)]
-         - self.grid_bounds = [(p0 min, p0 max, p100 min, p100 max, step grid crossing)]
+         - self.years =  [(2015, 2016, p0 min, p0 max, p100 min, p100 max, step grid crossing)]
 
         """
 
@@ -49,10 +47,9 @@ class Controller:
 
         user_inputs = read_user_inputs(file_path=hyp_user_path)
         self.years = user_inputs[0]
-        self.grid_bounds = user_inputs[1]
-        self.zones = user_inputs[2]
-        self.sectors = user_inputs[3]
-        self.storages = user_inputs[4]
+        self.zones = user_inputs[1]
+        self.sectors = user_inputs[2]
+        self.storages = user_inputs[3]
 
     def _read_database(self):
         """
@@ -65,7 +62,7 @@ class Controller:
         self.historical_powers = {}
         self.historical_prices = {}
 
-        for (year_min, year_max) in self.years:  # For each year group
+        for (year_min, year_max, *_) in self.years:  # For each year group
             powers_users = read_database_prod_user(folder_path=power_path, country_list=countries,
                                                    start_year=year_min, end_year=year_max)
             prices_users = read_database_price_user(folder_path=price_path, country_list=countries,
@@ -164,11 +161,12 @@ class Controller:
 
         return series
 
-    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], grid_bounds, consumption_mode: bool) \
+    def _optimize_error(self, series: dict[Timestamp, dict[str, float]], grid_init: tuple, consumption_mode: bool) \
             -> tuple:
         """
         Optimise the price model for a producer or a consumer.
         :param series: Database extraction: {Time step: {"price": price, "max power": max power, "power": power}}
+        :param grid_init: prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
         :return: (price_no_power, price_full_power)
         """
@@ -179,7 +177,7 @@ class Controller:
 
         def error_function(x: np.array):
             """
-            Compute error between the modeled and historical power *called* distributions,
+            Compute error between the modeled and historical power called distributions,
             using statistical moments (mean and std) of power.
 
             :param x: [price_no_power, price_full_power]
@@ -212,19 +210,14 @@ class Controller:
 
         # Definition of constraints
         if consumption_mode:
-            constraints = [
-                {'type': "ineq", 'fun': lambda x: x[1]},  # min_price must be positive
-                {'type': "ineq", 'fun': lambda x: x[0] - x[1]}  # max_price-min_price must be positive
-            ]
+            constraints = {'type': "ineq", 'fun': lambda x: x[0] - x[1]}  # max_price-min_price must be positive
         else:
-            constraints = [
-                {'type': "ineq", 'fun': lambda x: x[0]},  # min_price must be positive
-                {'type': "ineq", 'fun': lambda x: x[1] - x[0]} # max_price-min_price must be positive
-            ]
+            constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]} # max_price-min_price must be positive
 
         # Prices initialisation
-        p0_grid_min, p0_grid_max, p100_grid_min, p100_grid_max, step_prices_grid = grid_bounds[0]
-        c100_grid_min, c100_grid_max, c0_grid_min, c0_grid_max, _ = grid_bounds[0]
+
+        p0_grid_min, p0_grid_max, p100_grid_min, p100_grid_max, step_prices_grid = grid_init
+        c100_grid_min, c100_grid_max, c0_grid_min, c0_grid_max, _ = grid_init
         potential_prices_init = []
 
         if not consumption_mode: # production mode
@@ -303,7 +296,7 @@ class Controller:
         :return: {'year_min-year_max': {zone: {main_sector: [price_c_100%, price_c_0%, price_p_0%, price_p_100%]}}}
         """
         results = dict()
-        for (year_min, year_max) in self.years:
+        for (year_min, year_max, *grid_init) in self.years:
             years_key = f"{year_min}-{year_max}"
             results[years_key] = dict()
             for (zone, countries) in self.zones.items():
@@ -325,11 +318,10 @@ class Controller:
                             consumption_mode=True)
 
                         if len(zone_consumption_series) > 0:
-                            optimized_prices = self._optimize_error(series=zone_consumption_series,
-                                                                    grid_bounds=self.grid_bounds,
+                            optimized_prices = self._optimize_error(series=zone_consumption_series, grid_init=grid_init,
                                                                     consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
-                            title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
+                            title = f"{year_min}-{year_max} - {zone} - {main_sector} - Consumption"
                             self.plot_result(series=zone_consumption_series, price_min=consumption_price_full_power,
                                              price_max=consumption_price_no_power, title=title, consumption_mode=True)
 
@@ -341,7 +333,8 @@ class Controller:
                         consumption_mode=False)
 
                     if len(zone_production_series) > 0:
-                        optimized_prices = self._optimize_error(series=zone_production_series, grid_bounds=self.grid_bounds,consumption_mode=False)
+                        optimized_prices = self._optimize_error(series=zone_production_series,grid_init=grid_init,
+                                                                consumption_mode=False)
                         production_price_no_power, production_price_full_power = optimized_prices
                         title = f"{year_min}-{year_max} - {zone} - {main_sector} - Production"
                         self.plot_result(series=zone_production_series, price_min=production_price_no_power,
@@ -389,17 +382,19 @@ class Controller:
     @staticmethod
     def plot_result(series: dict, price_min: float, price_max: float, title: str, consumption_mode: bool):
         fig = plt.figure()
+        x_min :float = -50
+        x_max :float = 200
         prices = np.array([series_data["price"] for series_data in series.values()])
         powers = np.array([series_data["power"]/series_data["max power"] for series_data in series.values()])
         plt.scatter(prices, powers, s=10)
-        model_x = [0, price_min, price_max, max(max(prices), price_max)]
+        model_x = [min(x_min, price_min), price_min, price_max, max(x_max, price_max)]
         if consumption_mode:
             model_y = [-1, -1, 0, 0]
         else:
             model_y = [0, 0, 1, 1]
         plt.plot(model_x, model_y, c='red')
-        plt.xlim(-50, 200)
-        plt.xlabel("Prix (€)")
-        plt.ylabel("Taux de sollicitation")
+        plt.xlim(x_min, x_max)
+        plt.xlabel("Price (€)")
+        plt.ylabel("Call rate")
         fig.suptitle(title, fontsize=10)
         plt.show()
