@@ -7,9 +7,9 @@ from matplotlib import pyplot as plt
 from pandas import Timestamp
 from scipy.optimize import minimize
 
-from database_corrector import add_missing_dates_price, add_missing_dates_prod
-from read_database import read_database_price_user, read_database_prod_user
-from read_user_inputs import read_user_inputs
+from src.database_corrector import add_missing_dates_price, add_missing_dates_prod
+from src.read_database import read_database_price_user, read_database_prod_user
+from src.read_user_inputs import read_user_inputs
 
 
 class Controller:
@@ -166,7 +166,8 @@ class Controller:
         """
         Optimise the price model for a producer or a consumer.
         :param series: Database extraction: {Time step: {"price": price, "max power": max power, "power": power}}
-        :param prices_init: prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
+        :param prices_init:
+            prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
         :return: (price_no_power, price_full_power)
         """
@@ -212,7 +213,7 @@ class Controller:
         if consumption_mode:
             constraints = {'type': "ineq", 'fun': lambda x: x[0] - x[1]}  # max_price-min_price must be positive
         else:
-            constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]} # max_price-min_price must be positive
+            constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]}  # max_price-min_price must be positive
 
         # Prices initialisation
 
@@ -220,19 +221,20 @@ class Controller:
         c100_init_min, c100_init_max, c0_init_min, c0_init_max, _ = prices_init
         potential_prices_init = []
 
-        if not consumption_mode: # production mode
+        if not consumption_mode:  # production mode
             min_price_no_power, max_price_no_power = p0_init_min, p0_init_max
             min_price_full_power, max_price_full_power = p100_init_min, p100_init_max
-            prices_in_order = lambda x, y: x <= y
+            prices_in_order = lambda x, y: x <= y  # noqa
             label = "p"
-        else: # consumption mode
+        else:  # consumption mode
             min_price_no_power, max_price_no_power = c0_init_min, c0_init_max
             min_price_full_power, max_price_full_power = c100_init_min, c100_init_max
-            prices_in_order = lambda x, y: y <= x
+            prices_in_order = lambda x, y: y <= x  # noqa
             label = "c"
 
         for price_no_power in range(min_price_no_power, max_price_no_power + step_prices_init, step_prices_init):
-            for price_full_power in range(min_price_full_power, max_price_full_power + step_prices_init, step_prices_init):
+            for price_full_power in range(min_price_full_power, max_price_full_power + step_prices_init,
+                                          step_prices_init):
                 if prices_in_order(price_no_power, price_full_power):
                     loss = error_function([price_no_power, price_full_power])
                     potential_prices_init.append((loss, price_no_power, price_full_power))
@@ -245,15 +247,15 @@ class Controller:
         res = minimize(error_function, x0=np.array([prices_init[1], prices_init[2]]), tol=1e-8,
                        options={'disp': True}, constraints=constraints)
 
-        return round(float(res.x[0]),0), round(float(res.x[1]),0)
+        return round(float(res.x[0]), 0), round(float(res.x[1]), 0)
 
     def _export_results(self, results: dict):
 
         """
-        Takes the dictionary results and displays its data in a spreadsheet in 
-        xlsx format. Each sheet represents a range of years entered by the user.
-    
-        :param results : dictionnary made by run with the computed 
+        Takes the dictionary results and displays its data in a spreadsheet in xlsx format. Each sheet represents a
+        range of years entered by the user.
+
+        :param results : dictionnary made by run with the computed
         price model for each year range x zone x main sector.
         """
 
@@ -317,7 +319,8 @@ class Controller:
                             consumption_mode=True)
 
                         if len(zone_consumption_series) > 0:
-                            optimized_prices = self._optimize_error(series=zone_consumption_series, prices_init=grid_init,
+                            optimized_prices = self._optimize_error(series=zone_consumption_series,
+                                                                    prices_init=grid_init,
                                                                     consumption_mode=True)
                             consumption_price_no_power, consumption_price_full_power = optimized_prices
                             title = f"{year_min}-{year_max} - {zone} - {main_sector} - Consumption"
@@ -381,10 +384,10 @@ class Controller:
     @staticmethod
     def plot_result(series: dict, price_min: float, price_max: float, title: str, consumption_mode: bool):
         fig = plt.figure()
-        x_min :float = -50
-        x_max :float = 200
+        x_min: float = -50
+        x_max: float = 200
         prices = np.array([series_data["price"] for series_data in series.values()])
-        powers = np.array([series_data["power"]/series_data["max power"] for series_data in series.values()])
+        powers = np.array([series_data["power"] / series_data["max power"] for series_data in series.values()])
         plt.scatter(prices, powers, s=10)
         model_x = [min(x_min, price_min), price_min, price_max, max(x_max, price_max)]
         if consumption_mode:

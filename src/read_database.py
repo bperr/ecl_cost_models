@@ -14,7 +14,7 @@ def read_database_prod_user(folder_path: Path, country_list: list[str], start_ye
     if end_year < start_year:
         raise ValueError("End year cannot be before start year")
 
-    data_dict_prod_user = {} # Dictionnary to store data
+    data_dict_prod_user = {}  # Dictionnary to store data
 
     file_name_template = "Prod_{}_2015_2019.xlsx"  # Country code will be inserted instead of brackets
 
@@ -23,11 +23,13 @@ def read_database_prod_user(folder_path: Path, country_list: list[str], start_ye
         sheet_name = file_name[:-5]  # filename without .xlsx
         df = pd.read_excel(folder_path / f"{file_name}", sheet_name=sheet_name, header=0)
 
-        df = df[(df["Début de l'heure"].dt.year >= start_year) & (df["Début de l'heure"].dt.year <= end_year)] # Filter only the years wanted
+        df = df[(df["Début de l'heure"].dt.year >= start_year) & (
+                    df["Début de l'heure"].dt.year <= end_year)]  # Filter only the years wanted
 
-        df.set_index(df.columns[0], inplace=True)  # First column (time) as index and Column name is also kept as index name
+        df.set_index(df.columns[0],
+                     inplace=True)  # First column (time) as index and Column name is also kept as index name
 
-        data_dict_prod_user[country] = {} # Initialize the dictionary with countries
+        data_dict_prod_user[country] = {}  # Initialize the dictionary with countries
 
         # Store for each country, then for each production mode, the produced power every hour
         for prod_mode in df.columns:
@@ -54,8 +56,9 @@ def read_database_price_user(folder_path: Path, country_list: list[str], start_y
 
         for country in country_list:
             country_columns = [zone for zone in df.columns if zone.startswith(country)]
-            country_df = zones_to_country(df[country_columns]) # Do the mean of zones prices of the country
-            data_dict_price_user[country].update(country_df.to_dict()) # Add for each country time as key and price as value
+            country_df = zones_to_country(df[country_columns])  # Do the mean of zones prices of the country
+            data_dict_price_user[country].update(
+                country_df.to_dict())  # Add for each country time as key and price as value
 
     return data_dict_price_user
 
@@ -64,10 +67,10 @@ def zones_to_country(df: pd.DataFrame) -> pd.Series:
     df_clean = df.apply(pd.to_numeric, errors='coerce')  # convert unconvertible strings into NaN
     return df_clean.mean(axis=1)
 
+
 # Utilization example
 if __name__ == "__main__":
-    # db_path = Path(__file__).parents[1] / "instance" / "database"
-    db_path = db_dir
+    db_path = Path(__file__).parents[1] / "instance" / "database"
     folder_path_prod = db_path / "Production par pays et par filière 2015-2019"
     folder_path_price = db_path / "Prix spot par an et par zone 2015-2019"
     countries_list = ['AT', 'BE', 'CH', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR',

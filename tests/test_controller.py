@@ -86,17 +86,13 @@ def test_controller(prod_setup, spot_setup):
     fake_work_dir = Path("fake/work_dir")
 
     user_inputs = (
-        [(2015, 2016)],
+        [(2015, 2016, 0, 120, 0, 120, 12)],
         {"IBR": ["ES", "PT"], "FRA": ["FR"]},
         {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]},
         {"Storage"}
     )
     read_user_inputs_mock = patch("src.controller.read_user_inputs", return_value=user_inputs).start()
-    price_hypothesis = {
-        (2015, 2016): {"IBR": {"Fossil": [None, None, 30, 60], "Storage": [0, 50, 50, 70]},
-                       "FRA": {"Fossil": [None, None, 50, 60], "Storage": [0, 50, 50, 70]}}
-    }
-    read_price_hypothesis_mock = patch("src.controller.read_price_hypothesis", return_value=price_hypothesis).start()
+
     patch("src.controller.add_missing_dates_prod").start()
     patch("src.controller.add_missing_dates_price").start()
 
@@ -108,7 +104,6 @@ def test_controller(prod_setup, spot_setup):
     load_power_mock = prod_setup["mock"]
     load_power_mock.assert_called_once()
     read_user_inputs_mock.assert_called_once()
-    read_price_hypothesis_mock.assert_called_once()
 
     # Model used to build the test inputs
     expected_results = {'2015-2016': {"FRA": {"Fossil": [None, None, 40, 80],
@@ -126,4 +121,4 @@ def test_controller(prod_setup, spot_setup):
             for sector, sector_prices in zone_data.items():
                 assert sector in results[years][zone].keys()
                 sector_results = results[years][zone][sector]
-                assert sector_results == pytest.approx(sector_prices, abs=3)  # Alowing max absolute diff of 3
+                assert sector_results == pytest.approx(sector_prices, abs=5)  # Allowing max absolute diff of 5

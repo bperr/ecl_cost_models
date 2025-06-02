@@ -5,11 +5,12 @@ import pandas as pd
 
 def map_full_name_to_alpha2_code(file_path: Path) -> dict[str, str]:
     """
-    Loads an Excel file containing the list of EU countries names and their Alpha-2 codes, 
+    Loads an Excel file containing the list of EU countries names and their Alpha-2 codes,
     then creates a dictionary mapping each country name to its corresponding Alpha-2 code.
 
     :param file_path: Path to the Excel file containing the country names and their Alpha-2 codes.
-    :return dict[str, str]: A dictionary where the keys are country names (str) and the values are the corresponding Alpha-2 codes (str).
+    :return dict[str, str]:
+        A dictionary where the keys are country names (str) and the values are the corresponding Alpha-2 codes (str).
     """
 
     # Load country name conversion file
