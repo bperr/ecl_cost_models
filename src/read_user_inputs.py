@@ -7,10 +7,11 @@ def read_user_inputs(file_path: Path) -> tuple[
     list[tuple[int, int]],  # years
     dict[str, list[str]],  # countries_group
     dict[str, list[str]],  # sectors_group
-    list[str]]:  # storages
+    list[str]  # storages
+]:
     """
     Loads the user inputs Excel file and returns the parameters to enter in the read_price_hypothesis function.
-    
+
     :param file_path: Path to the Excel file containing user inputs.
     :return years: List of years group whose prices hypothesis must be read. A year group is start year and end year.
     :return countries_group: Dictionary listing zone to whose prices hypothesis must be read.
@@ -33,14 +34,23 @@ def read_user_inputs(file_path: Path) -> tuple[
                 raise ValueError(f"Missing columns in '{sheet_name}' sheet: {missing_columns}")
 
         # --- Extract years ---
-        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int})
-        check_columns(df_years, {'Year min', 'Year max'}, 'Years')
+        df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int, 'Min initial price': int,
+                                             'Max initial price': int})
+        check_columns(df_years, {'Year min', 'Year max', 'Min initial price', 'Max initial price'}, 'Years')
 
-        ## Data validation ##
+        # Data validation
         if (df_years['Year min'] > df_years['Year max']).any():
             raise ValueError("Invalid data in 'Years' sheet: 'Year min' must be <= 'Year max' for all rows.")
+        if (df_years['Min initial price'] > df_years['Max initial price']).any():
+            raise ValueError(
+                "Invalid data in 'Years' sheet: 'Min initial price' must be <= 'Max initial price' for all rows.")
 
-        years = list(zip(df_years['Year min'], df_years['Year max']))
+        nb_initial_prices = 10
+        df_years['step grid crossing'] = (((df_years['Max initial price'] - df_years['Min initial price'])
+                                           / nb_initial_prices).round().astype(int))
+        years = list(zip(df_years['Year min'], df_years['Year max'], df_years['Min initial price'],
+                         df_years['Max initial price'], df_years['Min initial price'],
+                         df_years['Max initial price'], df_years['step grid crossing']))
 
         # --- Extract country groups ---
         df_zones = xls.parse('Zones', dtype=str)
@@ -62,7 +72,8 @@ def read_user_inputs(file_path: Path) -> tuple[
         unused_zones = set(df_clustering['Zone'].dropna()) - set(countries_group.keys())
         if len(unused_main_sectors) > 0:
             warnings.warn(
-                f"The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': {unused_main_sectors}",
+                "The following 'Main sector' values from 'Clustering' do not appear in sheet 'Sectors': "
+                f"{unused_main_sectors}",
                 stacklevel=2)
         if len(unused_zones) > 0:
             warnings.warn(

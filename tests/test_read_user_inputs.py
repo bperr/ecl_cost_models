@@ -18,7 +18,8 @@ def setup():
     # method.
     file_exist_mock = patch.object(Path, "exists", autospec=True, return_value=True).start()
 
-    years_df = pd.DataFrame(columns=["Year min", "Year max"], data=[[2015, 2016]])
+    years_df = pd.DataFrame(columns=["Year min", "Year max", "Min initial price", "Max initial price"],
+                            data=[[2015, 2016, 0, 120]])
     zones_df = pd.DataFrame(columns=["Node", "Country names", "Zone", "Zone name"],
                             data=[["ES", "Spain", "IBR", "Iberian"], ["PT", "Portugal", "IBR", "Iberian"]])
     sectors_df = pd.DataFrame(columns=["Detailed sector", "Main sector"],
@@ -104,7 +105,7 @@ def test_read_user_inputs_raise_error_if_a_column_is_missing(setup, sheet_name, 
 
     # Check error message
     assert error.value.args[0] == (f"Error while reading the Excel file: "
-                                   f"Missing columns in '{sheet_name}' sheet: { {column_to_drop} }")
+                                   f"Missing columns in '{sheet_name}' sheet: { {column_to_drop} }")  # noqa
 
 
 def test_read_user_inputs_raise_error_if_a_year_min_is_greater_than_year_max(setup):
@@ -124,7 +125,9 @@ def test_read_user_inputs_raise_error_if_a_year_min_is_greater_than_year_max(set
     # Check mocks call
     mocks["pathlib.Path.exist"].assert_called_once_with(fake_file_path)
     mocks["pandas.ExcelFile"].assert_called_once_with(fake_file_path)
-    mocks["pandas.ExcelFile.parse"].assert_called_once_with('Years', dtype={'Year min': int, 'Year max': int})
+    mocks["pandas.ExcelFile.parse"].assert_called_once_with('Years', dtype={'Year min': int, 'Year max': int,
+                                                                            'Min initial price': int,
+                                                                            'Max initial price': int})
     mocks["warnings.warn"].assert_not_called()
 
     # Check error message
@@ -146,7 +149,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     mocks["pandas.ExcelFile"].assert_called_once_with(fake_file_path)
     assert mocks["pandas.ExcelFile.parse"].call_count == 4
     mocks["pandas.ExcelFile.parse"].assert_has_calls([
-        call('Years', dtype={'Year min': int, 'Year max': int}),
+        call('Years', dtype={'Year min': int, 'Year max': int, 'Min initial price': int, 'Max initial price': int}),
         call('Zones', dtype=str),
         call("Sectors", dtype=str),
         call("Clustering", dtype={'Is storage': float})
@@ -161,7 +164,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
 
     # Check results
     years, countries_group, sectors_group, storages = user_inputs
-    assert years == [(2015, 2016)]
+    assert years == [(2015, 2016, 0, 120, 0, 120, 12)]
     assert countries_group == {'IBR': ["ES", "PT"]}
     assert sectors_group == {'RES': ["biomass", "geothermal"], 'Storage': ["hydro_pumped_storage"]}
     assert storages == ["Storage"]
