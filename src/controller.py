@@ -85,9 +85,9 @@ class Controller:
                 self.historical_prices[country].update(price_dict)
 
     @staticmethod
-    def _compute_power_factor(price: float, price_no_power: float, price_full_power: float, consumption_mode: bool):
+    def _compute_load_factor(price: float, price_no_power: float, price_full_power: float, consumption_mode: bool):
         """
-        Compute the power factor associated to the input price, for the input price model
+        Compute the load factor associated to the input price, for the input price model
         :param price: Electricity price (€/MWh)
         :param price_no_power: Price from which production is possible
         :param price_full_power: Price from which full power is possible
@@ -115,7 +115,7 @@ class Controller:
         :param countries: List of countries
         :param detailed_sectors: List of detailed sectors
         :param consumption_mode: If True only the negative powers are considered. Else only the positive powers are.
-        :return: {Time step: {"price": price, "max power": max power, "power": power}
+        :return: {Time step: {"price": price, "load factor": load_factor, "power": power}
         """
         # {time_step: power} associated to the input group of years, countries and sectors
         power_series = dict()
@@ -136,11 +136,11 @@ class Controller:
             else:
                 warnings.warn(f"{country} not in historical power data")
 
-        # {time_step: price, max power, power} associated to the input group of years, countries and sectors
+        # {time_step: price, load factor, power} associated to the input group of years, countries and sectors
         series = dict()
-        max_power = max(abs(power) for power in power_series.values())  # power rating must be positive
+        power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
 
-        if max_power == 0:  # The power plant does not exist in the country
+        if power_rating == 0:  # The power plant does not exist in the country
             return {}
 
         for time_step in power_series.keys():
@@ -156,7 +156,7 @@ class Controller:
             power = power_series[time_step]
             if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
                 series[time_step] = {"price": sum(prices) / len(prices),
-                                     "max power": max_power,
+                                     "load factor": power / power_rating,
                                      "power": power}
 
         return series
@@ -165,7 +165,7 @@ class Controller:
             -> tuple:
         """
         Optimise the price model for a producer or a consumer.
-        :param series: Database extraction: {Time step: {"price": price, "max power": max power, "power": power}}
+        :param series: Database extraction: {Time step: {"price": price, "load factor": load_factor, "power": power}}
         :param prices_init:
             prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
@@ -173,35 +173,33 @@ class Controller:
         """
 
         # Extract historical values (mean and standard deviation)
-        historical_power = np.array([data["power"] for data in series.values()])
-        mu_hist, sigma_hist = np.mean(historical_power), np.std(historical_power)
+        historical_load_factors = np.array([data["load factor"] for data in series.values()])
+        mu_hist, sigma_hist = np.mean(historical_load_factors), np.std(historical_load_factors)
 
         def error_function(x: np.array):
             """
-            Compute error between the modeled and historical power called distributions,
+            Compute error between the modeled and historical load factors distributions,
             using statistical moments (mean and std) of power.
 
             :param x: [price_no_power, price_full_power]
             :return: error based on difference in moments
             """
-            modeled_power_called = []
+            modelled_load_factors = []
 
             for time_step, data in series.items():
                 price = data["price"]
-                max_power = data["max power"]
 
-                power_factor_model = self._compute_power_factor(
+                load_factor = self._compute_load_factor(
                     price=price,
                     price_no_power=x[0],
                     price_full_power=x[1],
                     consumption_mode=consumption_mode
                 )
 
-                power = power_factor_model * max_power  # Power at time t (time_step) obtained with price model
-                modeled_power_called.append(power)
+                modelled_load_factors.append(load_factor)
 
-            modeled_power_called = np.array(modeled_power_called)
-            mu_model, sigma_model = np.mean(modeled_power_called), np.std(modeled_power_called)
+            modelled_load_factors = np.array(modelled_load_factors)
+            mu_model, sigma_model = np.mean(modelled_load_factors), np.std(modelled_load_factors)
 
             mean_error = (mu_model - mu_hist) ** 2
             std_error = (sigma_model - sigma_hist) ** 2
@@ -216,21 +214,18 @@ class Controller:
             constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]}  # max_price-min_price must be positive
 
         # Prices initialisation
-
-        p0_init_min, p0_init_max, p100_init_min, p100_init_max, step_prices_init = prices_init
-        c100_init_min, c100_init_max, c0_init_min, c0_init_max, _ = prices_init
+        step_prices_init = prices_init[-1]
         potential_prices_init = []
 
-        if not consumption_mode:  # production mode
-            min_price_no_power, max_price_no_power = p0_init_min, p0_init_max
-            min_price_full_power, max_price_full_power = p100_init_min, p100_init_max
-            prices_in_order = lambda x, y: x <= y  # noqa
-            label = "p"
-        else:  # consumption mode
-            min_price_no_power, max_price_no_power = c0_init_min, c0_init_max
-            min_price_full_power, max_price_full_power = c100_init_min, c100_init_max
+        if consumption_mode:  # consumption mode
+            min_price_full_power, max_price_full_power, min_price_no_power, max_price_no_power, _ = prices_init
             prices_in_order = lambda x, y: y <= x  # noqa
             label = "c"
+
+        else:  # production mode
+            min_price_no_power, max_price_no_power, min_price_full_power, max_price_full_power, _ = prices_init
+            prices_in_order = lambda x, y: x <= y  # noqa
+            label = "p"
 
         for price_no_power in range(min_price_no_power, max_price_no_power + step_prices_init, step_prices_init):
             for price_full_power in range(min_price_full_power, max_price_full_power + step_prices_init,
@@ -239,7 +234,7 @@ class Controller:
                     loss = error_function([price_no_power, price_full_power])
                     potential_prices_init.append((loss, price_no_power, price_full_power))
 
-        prices_init = min(potential_prices_init)
+        prices_init = min(potential_prices_init, key=lambda item: item[0])
         print(
             f"Prices for initialisation: {label}0={prices_init[1]}, {label}100={prices_init[2]}, loss={prices_init[0]}")
 
@@ -255,7 +250,7 @@ class Controller:
         Takes the dictionary results and displays its data in a spreadsheet in xlsx format. Each sheet represents a
         range of years entered by the user.
 
-        :param results : dictionnary made by run with the computed
+        :param results : dictionary made by run with the computed
         price model for each year range x zone x main sector.
         """
 
@@ -387,7 +382,7 @@ class Controller:
         x_min: float = -50
         x_max: float = 200
         prices = np.array([series_data["price"] for series_data in series.values()])
-        powers = np.array([series_data["power"] / series_data["max power"] for series_data in series.values()])
+        powers = np.array([series_data["load factor"] for series_data in series.values()])
         plt.scatter(prices, powers, s=10)
         model_x = [min(x_min, price_min), price_min, price_max, max(x_max, price_max)]
         if consumption_mode:
@@ -397,6 +392,6 @@ class Controller:
         plt.plot(model_x, model_y, c='red')
         plt.xlim(x_min, x_max)
         plt.xlabel("Price (€)")
-        plt.ylabel("Call rate")
+        plt.ylabel("Load factor")
         fig.suptitle(title, fontsize=10)
         plt.show()

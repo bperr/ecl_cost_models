@@ -46,9 +46,8 @@ def read_user_inputs(file_path: Path) -> tuple[
                 "Invalid data in 'Years' sheet: 'Min initial price' must be <= 'Max initial price' for all rows.")
 
         nb_initial_prices = 10
-        df_years['step grid crossing'] = (
-                (df_years['Max initial price'] - df_years['Min initial price']) / nb_initial_prices).round().astype(
-            int)
+        df_years['step grid crossing'] = (((df_years['Max initial price'] - df_years['Min initial price'])
+                                           / nb_initial_prices).round().astype(int))
         years = list(zip(df_years['Year min'], df_years['Year max'], df_years['Min initial price'],
                          df_years['Max initial price'], df_years['Min initial price'],
                          df_years['Max initial price'], df_years['step grid crossing']))
