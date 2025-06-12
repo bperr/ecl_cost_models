@@ -291,21 +291,10 @@ class Controller:
         :param export_to_excel: To export the results in an Excel file
         :return: {'year_min-year_max': {zone: {main_sector: [price_c_100%, price_c_0%, price_p_0%, price_p_100%]}}}
         """
-        results = network.build_pricesmodel()
-        self._export_results()
-
-        # Network
-
         results = dict()
         for (year_min, year_max, *grid_init) in self.years:
             years_key = f"{year_min}-{year_max}"
             results[years_key] = dict()
-            for zone in self.zones:
-                zone.build_price model()
-
-                # Zone
-                for sector in self.sectors:
-
 
             for (zone, countries) in self.zones.items():
                 results[years_key][zone] = dict()

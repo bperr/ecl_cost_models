@@ -154,7 +154,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     set_parse_side_effect(dataframes=dataframes, mocks=mocks)
 
     # Run test
-    years, countries_group, sectors_group, storages = setup["data"]["reader"].read_user_inputs()
+    years, zones, main_sectors, storages, prices_init = setup["data"]["reader"].read_user_inputs()
 
     # Check mocks call
     mocks["pathlib.Path.exists"].assert_called_once_with(fake_file_path)
@@ -175,9 +175,10 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     ])
 
     # Check results
-    assert years == [(2015, 2016, 0, 120, 0, 120, 12)]
-    assert countries_group == {'IBR': ["ES", "PT"]}
-    assert sectors_group == {'RES': ["biomass", "geothermal"], 'Storage': ["hydro_pumped_storage"]}
+    assert years == [(2015, 2016)]
+    assert prices_init == {'2015-2016': (0, 120, 0, 120, 12)}
+    assert zones == ['IBR']
+    assert main_sectors == ['RES', 'Storage']
     assert storages == ["Storage"]
 
 # -------------- Tests for DataBase -------------- #

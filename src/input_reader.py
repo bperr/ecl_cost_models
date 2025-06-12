@@ -13,6 +13,7 @@ class InputReader:
         self.sectors_group = dict()
         self.storages = set()
         self.years = list()
+        self.prices_init = list()
 
         # Updated in self._read_db_powers() & self._read_db_prices()
         self.historical_powers: dict[str, pd.DataFrame] = dict()
@@ -51,7 +52,7 @@ class InputReader:
                 if missing_columns:
                     raise ValueError(f"Missing columns in '{sheet_name}' sheet: {missing_columns}")
 
-            # --- Extract years ---
+            # --- Extract years & prices initialisation ---
             df_years = xls.parse('Years', dtype={'Year min': int, 'Year max': int, 'Min initial price': int,
                                                  'Max initial price': int})
             check_columns(df_years, {'Year min', 'Year max', 'Min initial price', 'Max initial price'}, 'Years')
@@ -66,9 +67,16 @@ class InputReader:
             nb_initial_prices = 10
             df_years['step grid crossing'] = (((df_years['Max initial price'] - df_years['Min initial price'])
                                                / nb_initial_prices).round().astype(int))
-            self.years = list(zip(df_years['Year min'], df_years['Year max'], df_years['Min initial price'],
-                                  df_years['Max initial price'], df_years['Min initial price'],
-                                  df_years['Max initial price'], df_years['step grid crossing']))
+            self.years = list(zip(df_years['Year min'], df_years['Year max']))
+
+            self.prices_init = {f"{year_min}-{year_max}": (min_price_1, max_price_1, min_price_2, max_price_2, step)
+                for (year_min, year_max), min_price_1, max_price_1, min_price_2, max_price_2, step in zip(
+                    self.years,
+                    df_years['Min initial price'],df_years['Max initial price'],
+                    df_years['Min initial price'],df_years['Max initial price'],
+                    df_years['step grid crossing']
+                )
+            }
 
             # --- Extract country groups ---
             df_zones = xls.parse('Zones', dtype=str)
@@ -105,7 +113,7 @@ class InputReader:
         except Exception as e:
             raise ValueError(f"Error while reading the Excel file: {e}")
 
-        return self.years, list(self.zones.keys()), list(self.sectors_group.keys()), self.storages
+        return self.years, list(self.zones.keys()), list(self.sectors_group.keys()), self.storages, self.prices_init
 
     def read_db_powers(self):
         """
