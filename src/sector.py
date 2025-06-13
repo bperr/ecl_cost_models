@@ -1,15 +1,17 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
 from matplotlib import pyplot as plt
-from pathlib import Path
+from scipy.optimize import minimize
+
 
 class Sector:
     def __init__(self, sector_name: str, historical_powers: pd.Series, is_load: bool = False):
         self.name = sector_name
         self.historical_powers = historical_powers
 
-        # consumption_price_full_power,consumption_price_no_power,production_price_no_power,production_price_full_power :
+        # price_full_power,price_no_power (consumption or production)
         self._price_model = tuple()
         self.is_controllable = False
         self.is_load = is_load
@@ -42,7 +44,6 @@ class Sector:
         # Error function + Optimisation
         # Load factor : self.historical_power / self.availabilities (check si self.availabilities non vide)
         # self._price_model = (Cons_max, Cons_min, Prod_min, Prod_max)
-
 
         def error_function(x: np.array):
             """
@@ -117,11 +118,17 @@ class Sector:
 
     def build_availabilities(self, availabilities: pd.Series):
         if availabilities.empty:
-            power_rating = self.historical_powers.max()
-            self.availabilities = pd.Series(data=[power_rating] * len(self.historical_powers),
-                index=self.historical_powers.index)
+            if self.is_controllable:  # fossil : availability is supposed to be the maximum power called during the year
+                if self.is_load:
+                    power_rating = - self.historical_powers.max()
+                else:
+                    power_rating = self.historical_powers.max()
 
-        else: # nuclear (data available on energygraph)
+                self.availabilities = pd.Series(data=[power_rating] * len(self.historical_powers),
+                                                index=self.historical_powers.index)
+            else:  # Renewable : produced power is supposed to be equal to the available power at any time
+                self.availabilities = self.historical_powers
+        else:  # nuclear (data available on energygraph)
             self.availabilities = availabilities
 
     @property
@@ -134,19 +141,19 @@ class Sector:
         x_max: float = 200
 
         prices = historical_prices
-        powers = self.historical_powers
-        plt.scatter(prices, powers, s=10)
+        load_factor = self.historical_powers / self.availabilities
+        plt.scatter(prices, load_factor, s=10)
 
         if self.is_load:
             model_y = [-1, -1, 0, 0]
-            price_min = self._price_model[1] # consumption_price_full_power
-            price_max = self._price_model[0] # consumption_price_no_power
+            price_min = self._price_model[1]  # consumption_price_full_power
+            price_max = self._price_model[0]  # consumption_price_no_power
             title = f"{zone_name} - {self.name} - Consumption"
 
         else:
             model_y = [0, 0, 1, 1]
-            price_min = self._price_model[0] # production_price_no_power
-            price_max = self._price_model[1] # production_price_full_power
+            price_min = self._price_model[0]  # production_price_no_power
+            price_max = self._price_model[1]  # production_price_full_power
             title = f"{zone_name} - {self.name} - Production"
 
         model_x = [min(x_min, price_min), price_min, price_max, max(x_max, price_max)]

@@ -1,6 +1,7 @@
-import pytest
 from unittest.mock import patch, MagicMock
+
 import pandas as pd
+import pytest
 from pandas import Timestamp
 
 from src.zone import Zone
@@ -60,11 +61,12 @@ def zone_test_setup():
 
     patch.stopall()
 
+
 def test_add_sector(zone_test_setup):
-    zone = zone_test_setup["zone"] # instance of Zone class
-    historical_powers = zone_test_setup["powers"] # Data
-    sector_cls = zone_test_setup["sector_cls"] # fake Sector class
-    sector = zone_test_setup["sector"] # fake instance of sector_cls
+    zone = zone_test_setup["zone"]  # instance of Zone class
+    historical_powers = zone_test_setup["powers"]  # Data
+    sector_cls = zone_test_setup["sector_cls"]  # fake Sector class
+    sector = zone_test_setup["sector"]  # fake instance of sector_cls
 
     zone.add_sector("solar", historical_powers)
 
@@ -111,6 +113,7 @@ def test_build_price_model(zone_test_setup):
     assert isinstance(zone.historical_prices, pd.Series)
     assert all(isinstance(idx, pd.Timestamp) for idx in zone.historical_prices.index)
 
+
 def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_path):
     zone = zone_test_setup["zone"]
     sector = zone_test_setup["sector"]
@@ -121,7 +124,7 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
     zone.add_sector("solar", zone_test_setup["powers"])
 
     # Add a storage --> add 2 sectors (load and generator)
-    storage.load.is_load = True # Storage mock
+    storage.load.is_load = True  # Storage mock
     storage.generator.is_load = False
     zone.add_storage("hydro pump storage", zone_test_setup["powers"])
 

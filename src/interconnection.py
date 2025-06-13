@@ -1,6 +1,3 @@
-
-
-
 class Interconnection:
     def __init__(self, country_from: str, country_to: str, power_rating: float):
         self.country_from = country_from

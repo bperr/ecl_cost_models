@@ -14,7 +14,7 @@ class Zone:
         self.prices_out = list()
 
     def add_sector(self, sector_name: str, historical_powers: pd.Series):
-        sector = Sector(sector_name,historical_powers)
+        sector = Sector(sector_name, historical_powers)
         self.sectors.append(sector)
 
     def build_price_model(self, prices_init: tuple):
@@ -35,8 +35,7 @@ class Zone:
         for sector in self.sectors:
             if sector.is_load:
                 sector.plot_result(zone_name=self.name, historical_prices=self.historical_prices,
-                                   path=path / f"{self.name}-{sector.name}-load.png" )
+                                   path=path / f"{self.name}-{sector.name}-load.png")
             else:
                 sector.plot_result(zone_name=self.name, historical_prices=self.historical_prices,
                                    path=path / f"{self.name}-{sector.name}-generator.png")
-

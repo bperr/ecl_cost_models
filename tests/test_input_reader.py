@@ -12,6 +12,7 @@ from src.input_reader import InputReader
 def set_parse_side_effect(dataframes: dict[str, pd.DataFrame], mocks: dict):
     mocks['pandas.ExcelFile.parse'].side_effect = lambda sheet_name, **kwargs: dataframes[sheet_name]
 
+
 # -------------- Tests for user inputs -------------- #
 
 @pytest.fixture(scope='function')
@@ -71,7 +72,6 @@ def setup():
 
 
 def test_read_user_inputs_raise_error_if_file_does_not_exist(setup):
-
     fake_file_path = setup["data"]["fake directories"]["fake work dir"] / "User_inputs.xlsx"
     mocks = setup["mocks"]
 
@@ -181,6 +181,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     assert main_sectors == ['RES', 'Storage']
     assert storages == ["Storage"]
 
+
 # -------------- Tests for DataBase -------------- #
 
 # --- Production --- #
@@ -193,7 +194,7 @@ def prod_setup():
     reader = InputReader(work_dir=fake_work_dir, db_dir=fake_db_dir)
 
     # We consider that no cell is empty in the production DataBase
-    at_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW","wind_MW"],
+    at_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW", "wind_MW"],
                               data=[
                                   [Timestamp("01/01/2015  12:00:00"), 300, 1000, 20, 10],
                                   [Timestamp("01/01/2015  13:00:00"), 300, 1000, 30, 10],
@@ -203,7 +204,7 @@ def prod_setup():
                                   [Timestamp("01/01/2016  14:00:00"), 300, 1000, 35, 10],
                               ])
 
-    de_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW","wind_MW"],
+    de_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW", "wind_MW"],
                               data=[
                                   [Timestamp("01/01/2015  12:00:00"), 1000, 5000, 200, 50],
                                   [Timestamp("01/01/2015  13:00:00"), 1000, 5000, 300, 50],
@@ -213,7 +214,7 @@ def prod_setup():
                                   [Timestamp("01/01/2016  14:00:00"), 1000, 5000, 350, 50],
                               ])
 
-    fr_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW","wind_MW"],
+    fr_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW", "wind_MW"],
                               data=[
                                   [Timestamp("01/01/2015  12:00:00"), 1200, 3000, 300, 0],
                                   [Timestamp("01/01/2015  13:00:00"), 1200, 3000, 400, 0],
@@ -223,7 +224,7 @@ def prod_setup():
                                   [Timestamp("01/01/2016  14:00:00"), 1200, 3000, 450, 0],
                               ])
 
-    es_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW","wind_MW"],
+    es_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW", "wind_MW"],
                               data=[
                                   [Timestamp("01/01/2015  12:00:00"), 900, 2000, 2100, 40],
                                   [Timestamp("01/01/2015  13:00:00"), 900, 2000, 2100, 40],
@@ -233,7 +234,7 @@ def prod_setup():
                                   [Timestamp("01/01/2016  14:00:00"), 900, 2000, 2100, 40],
                               ])
 
-    pt_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW",'wind_MW'],
+    pt_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW", "solar_MW", 'wind_MW'],
                               data=[
                                   [Timestamp("01/01/2015  12:00:00"), 800, 1800, 1800, 20],
                                   [Timestamp("01/01/2015  13:00:00"), 800, 1800, 1800, 20],
@@ -265,22 +266,23 @@ def prod_setup():
            'fake directories': {
                'fake work dir': fake_work_dir,
                'fake db dir': fake_db_dir},
-            'mocks': {
-                'pandas.read_excel': read_excel_mock}
-    }
+           'mocks': {
+               'pandas.read_excel': read_excel_mock}
+           }
 
     patch.stopall()  # Cancel the patch command on 'read excel' (or any function)
+
 
 def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setup):
     # Set inputs
     fake_folder_path = prod_setup["fake directories"]["fake db dir"] / "Production par pays et par filière 2015-2019"
 
     reader = prod_setup["reader"]
-    reader.years=[(2015, 2015, 0, 120, 0, 120, 12)]
-    reader.zones={"FR": ["FR"], "DE":["DE"], "IBR":['ES', 'PT']}
-    reader.sectors_group = {'biomass_MW':{'biomass_MW'},
-                                          'fossil_gas_MW':{'fossil_gas_MW'},
-                                          'RES_MW':{'solar_MW','wind_MW'}}
+    reader.years = [(2015, 2015, 0, 120, 0, 120, 12)]
+    reader.zones = {"FR": ["FR"], "DE": ["DE"], "IBR": ['ES', 'PT']}
+    reader.sectors_group = {'biomass_MW': {'biomass_MW'},
+                            'fossil_gas_MW': {'fossil_gas_MW'},
+                            'RES_MW': {'solar_MW', 'wind_MW'}}
 
     read_excel_mock = prod_setup["mocks"]["pandas.read_excel"]
 
@@ -369,8 +371,9 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
     expected_value['DE'].index.name = 'Début de l\'heure'
     expected_value['IBR'].index.name = 'Début de l\'heure'
 
-    for zone in ["FR", "DE","IBR"]:
+    for zone in ["FR", "DE", "IBR"]:
         pd.testing.assert_frame_equal(historical_power[zone], expected_value[zone])
+
 
 # --- Prices --- #
 
@@ -436,13 +439,14 @@ def spot_setup():
 
     patch.stopall()  # Cancel the patch command on 'read excel' (or any function)
 
+
 def test_load_database_price_user_creates_expected_dataframe_structure(spot_setup):
     # Set inputs
     fake_folder_path = spot_setup["fake directories"]["fake db dir"] / "Prix spot par an et par zone 2015-2019"
 
     reader = spot_setup['reader']
-    reader.years = [(2015, 2016, 0, 120, 0, 120, 12)] # Get data from 2015 to 2016
-    reader.zones = {"BE": ["BE"], "DK": ["DK"],"FG":["FR","GE"]}
+    reader.years = [(2015, 2016, 0, 120, 0, 120, 12)]  # Get data from 2015 to 2016
+    reader.zones = {"BE": ["BE"], "DK": ["DK"], "FG": ["FR", "GE"]}
 
     read_excel_mock = spot_setup["mocks"]["pandas.read_excel"]
 
@@ -493,6 +497,7 @@ def test_load_database_price_user_creates_expected_dataframe_structure(spot_setu
 
     pd.testing.assert_frame_equal(historical_prices, expected_value)
 
+
 # -------------- Test for Price Models -------------- #
 
 @pytest.fixture(scope='function')
@@ -528,7 +533,7 @@ def pmodel_setup():
     excel_file_mock = patch("pandas.ExcelFile", return_value=mock_xls).start()
 
     # Patch read_excel to return the correct df based on sheet name
-    def sheetname_to_df(xls,sheet_name, **kwargs):
+    def sheetname_to_df(xls, sheet_name, **kwargs):
         if sheet_name == "2015":
             return df_2015
         elif sheet_name == "2016":
@@ -551,13 +556,14 @@ def pmodel_setup():
 
     patch.stopall()
 
+
 def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_setup):
     # Set inputs
     fake_folder_path = pmodel_setup["fake directories"]["fake work dir"] / "results"
 
     reader = pmodel_setup["reader"]
 
-    reader.years = [(2015, 2016, 0, 120, 0, 120, 12)] # Get data from 2015 to 2016
+    reader.years = [(2015, 2016, 0, 120, 0, 120, 12)]  # Get data from 2015 to 2016
     reader.zones = {"BE": ["BE"], "FR": ["FR"]}
     reader.storages = {"hydro damp"}
 
@@ -607,6 +613,7 @@ def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_set
 
     assert results == expected
 
+
 def test_read_price_models_error_if_consumption_for_non_storage(pmodel_setup):
     reader = pmodel_setup["reader"]
     reader.storages = ["battery"]
@@ -621,9 +628,10 @@ def test_read_price_models_error_if_consumption_for_non_storage(pmodel_setup):
     mock_xls.sheet_names = ["2015"]
 
     with patch("pandas.ExcelFile", return_value=mock_xls), \
-         patch("pandas.read_excel", return_value=df_invalid):
+            patch("pandas.read_excel", return_value=df_invalid):
         with pytest.raises(ValueError, match=r"n'est pas un stockage"):
             reader.read_price_models()
+
 
 def test_read_price_models_raises_if_prod_min_gt_max(pmodel_setup):
     reader = pmodel_setup["reader"]
@@ -639,9 +647,10 @@ def test_read_price_models_raises_if_prod_min_gt_max(pmodel_setup):
     mock_xls.sheet_names = ["2015"]
 
     with patch("pandas.ExcelFile", return_value=mock_xls), \
-         patch("pandas.read_excel", return_value=df_invalid):
+            patch("pandas.read_excel", return_value=df_invalid):
         with pytest.raises(ValueError, match=r"Prod_min > Prod_max"):
             reader.read_price_models()
+
 
 def test_read_price_models_raises_if_cons_max_gt_min(pmodel_setup):
     reader = pmodel_setup["reader"]
@@ -657,6 +666,6 @@ def test_read_price_models_raises_if_cons_max_gt_min(pmodel_setup):
     mock_xls.sheet_names = ["2015"]
 
     with patch("pandas.ExcelFile", return_value=mock_xls), \
-         patch("pandas.read_excel", return_value=df_invalid):
+            patch("pandas.read_excel", return_value=df_invalid):
         with pytest.raises(ValueError, match=r"Cons_max > Cons_min"):
             reader.read_price_models()

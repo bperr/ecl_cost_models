@@ -156,59 +156,50 @@ def test_build_price_models(controller_setup):
         ])
 
 
+def create_mock_zone(name, sector_specs):
+    """
+    Crée un mock de zone avec des secteurs selon les specs.
+
+    :param name: Nom de la zone (str)
+    :param sector_specs: Liste de tuples (nom, is_load, price_model)
+    :return: MagicMock de zone
+    """
+    zone = MagicMock()
+    zone.name = name
+    sectors = []
+    for sector_name, is_load, price_model in sector_specs:
+        sector = MagicMock()
+        sector.name = sector_name
+        sector.is_load = is_load
+        sector.price_model = price_model
+        sectors.append(sector)
+    zone.sectors = sectors
+    return zone
+
+
 def test_export_price_models(controller_setup):
     controller = controller_setup["controller"]
     network = controller_setup["network"]
 
     # Create two zones with mocked sectors
-    # Zone IBR
-    zone_mock_IBR = MagicMock()
-    zone_mock_IBR.name = "IBR"
+    zone_mock_IBR = create_mock_zone("IBR", [
+        ("hydro pump storage", True, (0, 10)),
+        ("hydro pump storage", False, (60, 100)),
+        ("solar", False, (20, 200)),
+    ])
 
-    load_sector_IBR = MagicMock()
-    load_sector_IBR.name = "hydro pump storage"
-    load_sector_IBR.is_load = True
-    load_sector_IBR.price_model = (0, 10)  # consumption
-
-    gen_sector_IBR = MagicMock()
-    gen_sector_IBR.name = "hydro pump storage"
-    gen_sector_IBR.is_load = False
-    gen_sector_IBR.price_model = (60, 100)  # production
-
-    solar_sector_IBR = MagicMock()
-    solar_sector_IBR.name = "solar"
-    solar_sector_IBR.is_load = False
-    solar_sector_IBR.price_model = (20, 200)
-
-    zone_mock_IBR.sectors = [load_sector_IBR, gen_sector_IBR, solar_sector_IBR]
-
-    # Zone FR
-    zone_mock_FR = MagicMock()
-    zone_mock_FR.name = "FR"
-
-    load_sector_FR = MagicMock()
-    load_sector_FR.name = "hydro pump storage"
-    load_sector_FR.is_load = True
-    load_sector_FR.price_model = (0, 20)
-
-    gen_sector_FR = MagicMock()
-    gen_sector_FR.name = "hydro pump storage"
-    gen_sector_FR.is_load = False
-    gen_sector_FR.price_model = (80, 100)
-
-    solar_sector_FR = MagicMock()
-    solar_sector_FR.name = "solar"
-    solar_sector_FR.is_load = False
-    solar_sector_FR.price_model = (10, 100)
-
-    zone_mock_FR.sectors = [load_sector_FR, gen_sector_FR, solar_sector_FR]
+    zone_mock_FR = create_mock_zone("FR", [
+        ("hydro pump storage", True, (0, 20)),
+        ("hydro pump storage", False, (80, 100)),
+        ("solar", False, (10, 100)),
+    ])
 
     network.zones = [zone_mock_IBR, zone_mock_FR]
     controller.network = network
 
-    written_df = {} # to get the exported df
+    written_df = {}  # to get the exported df
 
-    def fake_to_excel(self, writer, index=False, sheet_name=None): # to_excel mock
+    def fake_to_excel(self, writer, index=False, sheet_name=None):  # to_excel mock
         written_df['df'] = self  # get df
         return None
 
@@ -226,16 +217,16 @@ def test_export_price_models(controller_setup):
 
         # check df
         expected_df = pd.DataFrame(
-        columns=["Zone", "Price Type", "hydro pump storage", "solar"],
-        data=[
-            ["IBR", "Cons_max", 0, None],
-            ["IBR", "Cons_min", 10, None],
-            ["IBR", "Prod_min", 60, 20],
-            ["IBR", "Prod_max", 100, 200],
-            ["FR", "Cons_max", 0, None],
-            ["FR", "Cons_min", 20, None],
-            ["FR", "Prod_min", 80, 10],
-            ["FR", "Prod_max", 100, 100]
-        ]
-    )
+            columns=["Zone", "Price Type", "hydro pump storage", "solar"],
+            data=[
+                ["IBR", "Cons_max", 0, None],
+                ["IBR", "Cons_min", 10, None],
+                ["IBR", "Prod_min", 60, 20],
+                ["IBR", "Prod_max", 100, 200],
+                ["FR", "Cons_max", 0, None],
+                ["FR", "Cons_min", 20, None],
+                ["FR", "Prod_min", 80, 10],
+                ["FR", "Prod_max", 100, 100]
+            ]
+        )
         pd.testing.assert_frame_equal(df, expected_df)

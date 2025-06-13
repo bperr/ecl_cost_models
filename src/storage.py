@@ -1,6 +1,7 @@
+import pandas as pd
+
 from src.sector import Sector
 
-import pandas as pd
 
 class Storage:
     def __init__(self, sector_name: str, historical_powers: pd.Series):
@@ -9,4 +10,3 @@ class Storage:
 
         self.load = Sector(sector_name, powers_load, is_load=True)
         self.generator = Sector(sector_name, powers_generator)
-

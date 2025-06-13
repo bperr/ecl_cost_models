@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pandas as pd
-from matplotlib import pyplot as plt
 
 from src.input_reader import InputReader
 from src.network import Network
@@ -10,7 +9,7 @@ from src.network import Network
 class Controller:
     def __init__(self, work_dir: Path, db_dir: Path):
         self.input_reader = InputReader(work_dir, db_dir)
-        self.work_dir=work_dir
+        self.work_dir = work_dir
         self.network = None
 
         self.prices = self.input_reader.read_db_prices()
@@ -74,7 +73,6 @@ class Controller:
             plot_folder_path.mkdir(parents=True, exist_ok=True)
             zone.save_plots(plot_folder_path)
             loop += 1
-
 
         df = pd.DataFrame(data, columns=["Zone", "Price Type"] + sectors)
 

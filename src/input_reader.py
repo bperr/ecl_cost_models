@@ -1,6 +1,7 @@
-from pathlib import Path
-import pandas as pd
 import warnings
+from pathlib import Path
+
+import pandas as pd
 
 
 class InputReader:
@@ -70,13 +71,14 @@ class InputReader:
             self.years = list(zip(df_years['Year min'], df_years['Year max']))
 
             self.prices_init = {f"{year_min}-{year_max}": (min_price_1, max_price_1, min_price_2, max_price_2, step)
-                for (year_min, year_max), min_price_1, max_price_1, min_price_2, max_price_2, step in zip(
-                    self.years,
-                    df_years['Min initial price'],df_years['Max initial price'],
-                    df_years['Min initial price'],df_years['Max initial price'],
-                    df_years['step grid crossing']
-                )
-            }
+                                for (year_min, year_max), min_price_1, max_price_1, min_price_2, max_price_2, step in
+                                zip(
+                                    self.years,
+                                    df_years['Min initial price'], df_years['Max initial price'],
+                                    df_years['Min initial price'], df_years['Max initial price'],
+                                    df_years['step grid crossing']
+                                )
+                                }
 
             # --- Extract country groups ---
             df_zones = xls.parse('Zones', dtype=str)
@@ -138,8 +140,8 @@ class InputReader:
                 sheet_name = file_name[:-5]  # filename without .xlsx
 
                 df = pd.read_excel(power_path / f"{file_name}", sheet_name=sheet_name, header=0)
-                df = df[(df["Début de l'heure"].dt.year >= year_min) & (
-                        df["Début de l'heure"].dt.year <= year_max)]  # Filter only the years wanted
+                df = df[(df["Début de l'heure"].dt.year >= year_min) &
+                        (df["Début de l'heure"].dt.year <= year_max)]  # Filter only the years wanted
 
                 df.set_index(df.columns[0],
                              inplace=True)  # First column (time) as index and Column name is also kept as index name
@@ -176,7 +178,7 @@ class InputReader:
         Reads the price DataBase and creates a DataFrame with Time index and zones as columns
         """
         price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
-        all_dfs = [] # List of Dataframes (one per year) to concatenate
+        all_dfs = []  # List of Dataframes (one per year) to concatenate
 
         for (year_min, year_max, *_) in self.years:  # For each year group
 
@@ -279,7 +281,7 @@ class InputReader:
                         if cons_max is not None and cons_min is not None:
                             if cons_max > cons_min:
                                 raise ValueError(
-                                    f"[{year_key}] Erreur logique : Cons_max > Cons_min pour '{sector}' dans la zone '{zone}' "
-                                    f"({cons_max} > {cons_min})"
-                                )
+                                    f"[{year_key}] Erreur logique : Cons_max > Cons_min pour "
+                                    f"'{sector}' dans la zone '{zone}' ({cons_max} > {cons_min})"
+                                    )
         return results

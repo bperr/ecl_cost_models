@@ -1,13 +1,14 @@
-import pytest
-import pandas as pd
-from pandas import Timestamp
 from unittest.mock import MagicMock, patch
+
+import pandas as pd
+import pytest
+from pandas import Timestamp
 
 from src.network import Network
 
 
 @pytest.fixture(scope="function")
-def network_test_setup():
+def network_setup():
     # --- Timestamps ---
     timestamps = [
         Timestamp("01/01/2015  12:00:00"),
@@ -44,8 +45,17 @@ def network_test_setup():
 
     patch.stopall()
 
-def test_add_zone(network_test_setup):
-    setup = network_test_setup
+
+def make_sector(name, price_model, is_load):
+    mock = MagicMock()
+    mock.name = name
+    mock.price_model = price_model
+    mock.is_load = is_load
+    return mock
+
+
+def test_add_zone(network_setup):
+    setup = network_setup
     network = Network()
 
     # Add zone
@@ -62,29 +72,30 @@ def test_add_zone(network_test_setup):
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network.zones
 
-def test_build_price_models(network_test_setup):
+
+def test_build_price_models(network_setup):
     network = Network()
-    network.zones.append(network_test_setup["zone"])
+    network.zones.append(network_setup["zone"])
 
     # Calls build_price_models
     network.build_price_models((0, 100, 0, 100, 10))
 
     # Check the call of build_price_model of zone
-    network_test_setup["zone"].build_price_model.assert_called_once_with((0, 100, 0, 100, 10))
+    network_setup["zone"].build_price_model.assert_called_once_with((0, 100, 0, 100, 10))
 
-def test_check_price_models_valid(network_test_setup):
+
+def test_build_price_models_raises_when_no_zones():
     network = Network()
-    zone = network_test_setup["zone"]
+    with pytest.raises(ValueError, match="No zones available to build price models."):
+        network.build_price_models((0, 100, 0, 100, 10))
 
-    sector_1 = MagicMock()
-    sector_1.name = "solar"
-    sector_1.price_model = (50, 100) # p0 <= p100
-    sector_1.is_load = False
 
-    sector_2 = MagicMock()
-    sector_2.name = "battery"
-    sector_2.price_model = (20, 10)  # c100 <= c0
-    sector_2.is_load = True
+def test_check_price_models_valid(network_setup):
+    network = Network()
+    zone = network_setup["zone"]
+
+    sector_1 = make_sector("solar", (50, 100), False)  # p0 <= p100
+    sector_2 = make_sector("battery", (20, 10), True)  # c0 >= c100
 
     zone.sectors = [sector_1, sector_2]
     network.zones = [zone]
@@ -92,47 +103,23 @@ def test_check_price_models_valid(network_test_setup):
     # Should not raise
     network.check_price_models()
 
-def test_check_price_models_raises_on_empty_price_model(network_test_setup):
+
+@pytest.mark.parametrize("name, price_model, is_load, expected_error", [
+    ("solar", [], False, "Prices values are missing for solar"),
+    ("solar", (100, 90), False, "Production price p0 must be lower than p100"),
+    ("battery", (20, 30), True, "Consumption price c100 must be lower than c0"),
+])
+def test_check_price_models_raises_errors(network_setup, name, price_model, is_load, expected_error):
     network = Network()
-    zone = network_test_setup["zone"]
+    zone = network_setup["zone"]
 
     bad_sector = MagicMock()
-    bad_sector.name = "solar"
-    bad_sector.price_model = []
-    bad_sector.is_load = False
+    bad_sector.name = name
+    bad_sector.price_model = price_model
+    bad_sector.is_load = is_load
 
     zone.sectors = [bad_sector]
     network.zones = [zone]
 
-    with pytest.raises(ValueError, match="Prices values are missing for solar"):
-        network.check_price_models()
-
-def test_check_price_models_raises_on_invalid_production_price(network_test_setup):
-    network = Network()
-    zone = network_test_setup["zone"]
-
-    sector = MagicMock()
-    sector.name = "solar"
-    sector.price_model = (100, 90)  # p0 > p100
-    sector.is_load = False
-
-    zone.sectors = [sector]
-    network.zones = [zone]
-
-    with pytest.raises(ValueError, match="Production price p0 must be lower than p100"):
-        network.check_price_models()
-
-def test_check_price_models_raises_on_invalid_consumption_price(network_test_setup):
-    network = Network()
-    zone = network_test_setup["zone"]
-
-    sector = MagicMock()
-    sector.name = "battery"
-    sector.price_model = (30, 20)  # c100 > c0
-    sector.is_load = True
-
-    zone.sectors = [sector]
-    network.zones = [zone]
-
-    with pytest.raises(ValueError, match="Consumption price c100 must be lower than c0"):
+    with pytest.raises(ValueError, match=expected_error):
         network.check_price_models()

@@ -26,6 +26,8 @@ class Network:
         pass
 
     def build_price_models(self, prices_init: tuple):
+        if not self.zones:
+            raise ValueError("No zones available to build price models.")
         for zone in self.zones:
             zone.build_price_model(prices_init)
 
@@ -40,7 +42,7 @@ class Network:
                     raise ValueError(f"Prices values are missing for {sector.name} in '{zone.name}'")
 
                 if sector.is_load:
-                    c_price_full_power, c_price_no_power = prices
+                    c_price_no_power, c_price_full_power = prices
                     if not (c_price_full_power <= c_price_no_power):
                         raise ValueError(
                             f"Consumption price c100 must be lower than c0 for {sector.name} in '{zone.name}'")
@@ -49,7 +51,6 @@ class Network:
                     if not (p_price_no_power <= p_price_full_power):
                         raise ValueError(
                             f"Production price p0 must be lower than p100 for {sector.name} in '{zone.name}'")
-
 
     def check_power_models(self):
         # opf
