@@ -27,10 +27,11 @@ def setup():
                             data=[["ES", "Spain", "IBR", "Iberian"], ["PT", "Portugal", "IBR", "Iberian"]])
     sectors_df = pd.DataFrame(columns=["Detailed sector", "Main sector"],
                               data=[["biomass", "RES"], ["geothermal", "RES"], ["hydro_pumped_storage", "Storage"]])
-    clustering_df = pd.DataFrame(columns=["Zone", "Zone name", "Unnamed", "Main sector", "Is storage"],
-                                 data=[["IBR", "Iberian", np.nan, "RES", 0],
-                                       ["FR", "France", np.nan, "Storage", 1],
-                                       [np.nan, np.nan, np.nan, "Nuclear", 0]])
+    clustering_df = pd.DataFrame(columns=["Zone", "Zone name", "Unnamed", "Main sector",
+                                          "Is storage", "Is controllable"],
+                                 data=[["IBR", "Iberian", np.nan, "RES", 0, 0],
+                                       ["FR", "France", np.nan, "Storage", 1, 1],
+                                       [np.nan, np.nan, np.nan, "Nuclear", 0, 1]])
 
     # Emulate pd.ExcelFile
     fake_excel_file = MagicMock(autospec=True)
@@ -154,7 +155,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     set_parse_side_effect(dataframes=dataframes, mocks=mocks)
 
     # Run test
-    years, zones, main_sectors, storages, prices_init = setup["data"]["reader"].read_user_inputs()
+    years, zones, main_sectors, storages, controllable, prices_init = setup["data"]["reader"].read_user_inputs()
 
     # Check mocks call
     mocks["pathlib.Path.exists"].assert_called_once_with(fake_file_path)
@@ -164,7 +165,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
         call('Years', dtype={'Year min': int, 'Year max': int, 'Min initial price': int, 'Max initial price': int}),
         call('Zones', dtype=str),
         call("Sectors", dtype=str),
-        call("Clustering", dtype={'Is storage': float})
+        call("Clustering", dtype={'Is storage': float, 'Is controllable': float})
     ])
     assert mocks["warnings.warn"].call_count == 2
     mocks["warnings.warn"].assert_has_calls([
@@ -180,6 +181,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     assert zones == ['IBR']
     assert main_sectors == ['RES', 'Storage']
     assert storages == ["Storage"]
+    assert controllable == ["Storage", "Nuclear"]
 
 
 # -------------- Tests for DataBase -------------- #
@@ -280,9 +282,9 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
     reader = prod_setup["reader"]
     reader.years = [(2015, 2015, 0, 120, 0, 120, 12)]
     reader.zones = {"FR": ["FR"], "DE": ["DE"], "IBR": ['ES', 'PT']}
-    reader.sectors_group = {'biomass_MW': {'biomass_MW'},
-                            'fossil_gas_MW': {'fossil_gas_MW'},
-                            'RES_MW': {'solar_MW', 'wind_MW'}}
+    reader.sectors_group = {'biomass': {'biomass'},
+                            'fossil_gas': {'fossil_gas'},
+                            'RES': {'solar', 'wind'}}
 
     read_excel_mock = prod_setup["mocks"]["pandas.read_excel"]
 
@@ -307,19 +309,19 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
     expected_value = {
         # Only FR and DE
         'FR': pd.DataFrame({
-            'biomass_MW': {
+            'biomass': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 1200,
                 Timestamp("01/01/2015  13:00:00"): 1200,
                 Timestamp("01/01/2015  14:00:00"): 1200
             },
-            'fossil_gas_MW': {
+            'fossil_gas': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 3000,
                 Timestamp("01/01/2015  13:00:00"): 3000,
                 Timestamp("01/01/2015  14:00:00"): 3000
             },
-            'RES_MW': {
+            'RES': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 300,
                 Timestamp("01/01/2015  13:00:00"): 400,
@@ -327,19 +329,19 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
             }
         }),
         'DE': pd.DataFrame({
-            'biomass_MW': {
+            'biomass': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 1000,
                 Timestamp("01/01/2015  13:00:00"): 1000,
                 Timestamp("01/01/2015  14:00:00"): 1000
             },
-            'fossil_gas_MW': {
+            'fossil_gas': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 5000,
                 Timestamp("01/01/2015  13:00:00"): 5000,
                 Timestamp("01/01/2015  14:00:00"): 5000
             },
-            'RES_MW': {
+            'RES': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 250,
                 Timestamp("01/01/2015  13:00:00"): 350,
@@ -347,19 +349,19 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
             }
         }),
         'IBR': pd.DataFrame({
-            'biomass_MW': {
+            'biomass': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 1700,
                 Timestamp("01/01/2015  13:00:00"): 1700,
                 Timestamp("01/01/2015  14:00:00"): 1700
             },
-            'fossil_gas_MW': {
+            'fossil_gas': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 3800,
                 Timestamp("01/01/2015  13:00:00"): 3800,
                 Timestamp("01/01/2015  14:00:00"): 3800
             },
-            'RES_MW': {
+            'RES': {
                 # Only 2015 time steps
                 Timestamp("01/01/2015  12:00:00"): 3960,
                 Timestamp("01/01/2015  13:00:00"): 3960,

@@ -44,7 +44,7 @@ def test_storage_initializes_load_and_generator(storage_setup):
     sector_generator = storage_setup["sector_generator"]
 
     # Creation of the object storage
-    storage = Storage("hydro pump storage", powers)
+    storage = Storage("hydro pump storage", powers, is_controllable=True)
 
     # Check that Sector class has been called twice
     assert sector_cls.call_count == 2

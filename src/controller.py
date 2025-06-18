@@ -85,9 +85,10 @@ class Controller:
                 self.historical_prices[country].update(price_dict)
 
     @staticmethod
-    def _compute_load_factor(price: float, price_no_power: float, price_full_power: float, consumption_mode: bool):
+    def _compute_utilization_ratio(price: float, price_no_power: float, price_full_power: float,
+                                   consumption_mode: bool):
         """
-        Compute the load factor associated to the input price, for the input price model
+        Compute the utilization ratio associated to the input price, for the input price model
         :param price: Electricity price (€/MWh)
         :param price_no_power: Price from which production is possible
         :param price_full_power: Price from which full power is possible
@@ -115,7 +116,7 @@ class Controller:
         :param countries: List of countries
         :param detailed_sectors: List of detailed sectors
         :param consumption_mode: If True only the negative powers are considered. Else only the positive powers are.
-        :return: {Time step: {"price": price, "load factor": load_factor, "power": power}
+        :return: {Time step: {"price": price, "utilization ratio": utilization_ratio, "power": power}
         """
         # {time_step: power} associated to the input group of years, countries and sectors
         power_series = dict()
@@ -136,7 +137,7 @@ class Controller:
             else:
                 warnings.warn(f"{country} not in historical power data")
 
-        # {time_step: price, load factor, power} associated to the input group of years, countries and sectors
+        # {time_step: price, utilization ratio, power} associated to the input group of years, countries and sectors
         series = dict()
         power_rating = max(abs(power) for power in power_series.values())  # power rating must be positive
 
@@ -156,7 +157,7 @@ class Controller:
             power = power_series[time_step]
             if (not consumption_mode and power >= 0) or (consumption_mode and power <= 0):
                 series[time_step] = {"price": sum(prices) / len(prices),
-                                     "load factor": power / power_rating,
+                                     "utilization ratio": power / power_rating,
                                      "power": power}
 
         return series
@@ -165,7 +166,8 @@ class Controller:
             -> tuple:
         """
         Optimise the price model for a producer or a consumer.
-        :param series: Database extraction: {Time step: {"price": price, "load factor": load_factor, "power": power}}
+        :param series:
+            Database extraction: {Time step: {"price": price, "utilization ratio": utilization_ratio, "power": power}}
         :param prices_init:
             prices and step for price initialisation (p0 min, p0 max, p100 min, p100 max, step grid crossing)
         :param consumption_mode: If True a consumption model is optimised. Else a production model is optimised.
@@ -173,33 +175,33 @@ class Controller:
         """
 
         # Extract historical values (mean and standard deviation)
-        historical_load_factors = np.array([data["load factor"] for data in series.values()])
-        mu_hist, sigma_hist = np.mean(historical_load_factors), np.std(historical_load_factors)
+        historical_utilization_ratios = np.array([data["utilization ratio"] for data in series.values()])
+        mu_hist, sigma_hist = np.mean(historical_utilization_ratios), np.std(historical_utilization_ratios)
 
         def error_function(x: np.array):
             """
-            Compute error between the modeled and historical load factors distributions,
+            Compute error between the modeled and historical utilization ratios distributions,
             using statistical moments (mean and std) of power.
 
             :param x: [price_no_power, price_full_power]
             :return: error based on difference in moments
             """
-            modelled_load_factors = []
+            modelled_utilization_ratios = []
 
             for time_step, data in series.items():
                 price = data["price"]
 
-                load_factor = self._compute_load_factor(
+                utilization_ratio = self._compute_utilization_ratio(
                     price=price,
                     price_no_power=x[0],
                     price_full_power=x[1],
                     consumption_mode=consumption_mode
                 )
 
-                modelled_load_factors.append(load_factor)
+                modelled_utilization_ratios.append(utilization_ratio)
 
-            modelled_load_factors = np.array(modelled_load_factors)
-            mu_model, sigma_model = np.mean(modelled_load_factors), np.std(modelled_load_factors)
+            modelled_utilization_ratios = np.array(modelled_utilization_ratios)
+            mu_model, sigma_model = np.mean(modelled_utilization_ratios), np.std(modelled_utilization_ratios)
 
             mean_error = (mu_model - mu_hist) ** 2
             std_error = (sigma_model - sigma_hist) ** 2
@@ -383,7 +385,7 @@ class Controller:
         x_min: float = -50
         x_max: float = 200
         prices = np.array([series_data["price"] for series_data in series.values()])
-        powers = np.array([series_data["load factor"] for series_data in series.values()])
+        powers = np.array([series_data["utilization ratio"] for series_data in series.values()])
         plt.scatter(prices, powers, s=10)
         model_x = [min(x_min, price_min), price_min, price_max, max(x_max, price_max)]
         if consumption_mode:
@@ -393,6 +395,6 @@ class Controller:
         plt.plot(model_x, model_y, c='red')
         plt.xlim(x_min, x_max)
         plt.xlabel("Price (€)")
-        plt.ylabel("Load factor")
+        plt.ylabel("utilization ratio")
         fig.suptitle(title, fontsize=10)
         plt.show()

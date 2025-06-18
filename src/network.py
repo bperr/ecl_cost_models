@@ -10,16 +10,17 @@ class Network:
         self.interconnection: list[Interconnection] = list()
 
     def add_zone(self, zone_name: str, sectors_historical_powers: pd.DataFrame, storages: list[str],
-                 historical_prices: pd.Series):
+                 controllable: list[str], historical_prices: pd.Series, saving_data: dict):
 
         zone = Zone(zone_name, historical_prices)
         self.zones.append(zone)
 
         for sector_name in sectors_historical_powers.columns:
+            is_controllable = sector_name in controllable
             if sector_name in storages:
-                zone.add_storage(sector_name, sectors_historical_powers[sector_name])
+                zone.add_storage(sector_name, sectors_historical_powers[sector_name], is_controllable)
             else:
-                zone.add_sector(sector_name, sectors_historical_powers[sector_name])
+                zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable, saving_data)
 
     def add_interconnection(self):
         # opf

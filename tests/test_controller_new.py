@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call, patch, ANY
 
 import pandas as pd
 import pytest
@@ -43,7 +43,7 @@ def controller_setup():
     input_reader_mock.read_db_powers.return_value = powers
     input_reader_mock.read_user_inputs.return_value = (
         [(2015, 2015), (2016, 2016)], ["IBR", "FR"], ["solar", "hydro pump storage"], ["hydro pump storage"],
-        prices_init
+        ["hydro pump storage"], prices_init
     )
     input_reader_mock.work_dir = Path("fake/work_dir")
 
@@ -151,8 +151,8 @@ def test_build_price_models(controller_setup):
         ], any_order=True)
 
         export_patch.assert_has_calls([
-            call(2015, 2015, True),
-            call(2016, 2016, False),
+            call(2015, 2015, True, ANY),
+            call(2016, 2016, False, ANY)
         ])
 
 
@@ -183,13 +183,13 @@ def test_export_price_models(controller_setup):
 
     # Create two zones with mocked sectors
     zone_mock_IBR = create_mock_zone("IBR", [
-        ("hydro pump storage", True, (0, 10)),
+        ("hydro pump storage", True, (10, 0)),
         ("hydro pump storage", False, (60, 100)),
         ("solar", False, (20, 200)),
     ])
 
     zone_mock_FR = create_mock_zone("FR", [
-        ("hydro pump storage", True, (0, 20)),
+        ("hydro pump storage", True, (20, 0)),
         ("hydro pump storage", False, (80, 100)),
         ("solar", False, (10, 100)),
     ])
@@ -204,14 +204,17 @@ def test_export_price_models(controller_setup):
         return None
 
     with patch("pandas.DataFrame.to_excel", new=fake_to_excel):
-        controller.export_price_models(start_year=2015, end_year=2015, create_file=True)
+        current_date = "20250618_13h02"
+        controller.export_price_models(start_year=2015, end_year=2015, create_file=True, current_date=current_date)
         df = written_df['df']
 
         # Ensure save_plots and pd.ExcelWriter are called with the good arguments
-        zone_mock_IBR.save_plots.assert_called_with(Path("fake/work_dir/results/Plots for years 2015-2015"))
-        zone_mock_FR.save_plots.assert_called_with(Path("fake/work_dir/results/Plots for years 2015-2015"))
+        zone_mock_IBR.save_plots.assert_called_with(
+            Path(f"fake/work_dir/results {current_date}/Plots for years 2015-2015"))
+        zone_mock_FR.save_plots.assert_called_with(
+            Path(f"fake/work_dir/results {current_date}/Plots for years 2015-2015"))
         controller_setup["excel_writer_patch"].assert_called_with(
-            Path("fake/work_dir") / "results" / "Output_prices.xlsx",
+            Path("fake/work_dir") / f"results {current_date}" / "Output_prices.xlsx",
             mode='w'
         )
 
@@ -219,12 +222,12 @@ def test_export_price_models(controller_setup):
         expected_df = pd.DataFrame(
             columns=["Zone", "Price Type", "hydro pump storage", "solar"],
             data=[
-                ["IBR", "Cons_max", 0, None],
-                ["IBR", "Cons_min", 10, None],
+                ["IBR", "Cons_max", 0, ""],
+                ["IBR", "Cons_min", 10, ""],
                 ["IBR", "Prod_min", 60, 20],
                 ["IBR", "Prod_max", 100, 200],
-                ["FR", "Cons_max", 0, None],
-                ["FR", "Cons_min", 20, None],
+                ["FR", "Cons_max", 0, ""],
+                ["FR", "Cons_min", 20, ""],
                 ["FR", "Prod_min", 80, 10],
                 ["FR", "Prod_max", 100, 100]
             ]

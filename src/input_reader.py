@@ -13,6 +13,7 @@ class InputReader:
         self.zones = dict()
         self.sectors_group = dict()
         self.storages = set()
+        self.controllable = set()
         self.years = list()
         self.prices_init = list()
 
@@ -91,9 +92,12 @@ class InputReader:
             sectors_group = df_sectors.groupby('Main sector')['Detailed sector'].apply(list).to_dict()
 
             # --- Extract storage-related production modes ---
-            df_clustering = xls.parse('Clustering', dtype={'Is storage': float})
-            check_columns(df_clustering, {'Main sector', 'Is storage'}, 'Clustering')
+            df_clustering = xls.parse('Clustering', dtype={'Is storage': float, 'Is controllable': float})
+            check_columns(df_clustering, {'Main sector', 'Is storage', 'Is controllable'}, 'Clustering')
+
             storages_group = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
+            controllable_group = df_clustering[df_clustering['Is controllable'] == 1.0][
+                'Main sector'].dropna().unique().tolist()
 
             # --- Validation: Check if all zones & main sectors in Clustering exist in other sheets ---
             unused_main_sectors = set(df_clustering['Main sector'].dropna()) - set(sectors_group.keys())
@@ -111,11 +115,13 @@ class InputReader:
             self.zones = zones
             self.sectors_group = sectors_group
             self.storages = storages_group
+            self.controllable = controllable_group
 
         except Exception as e:
             raise ValueError(f"Error while reading the Excel file: {e}")
 
-        return self.years, list(self.zones.keys()), list(self.sectors_group.keys()), self.storages, self.prices_init
+        return (self.years, list(self.zones.keys()), list(self.sectors_group.keys()), self.storages, self.controllable,
+                self.prices_init)
 
     def read_db_powers(self):
         """
@@ -124,52 +130,59 @@ class InputReader:
         """
         power_path = self.db_dir / "Production par pays et par filière 2015-2019"
 
-        for (year_min, year_max, *_) in self.years:  # For each year group
-
+        # Build all years to read
+        all_years = set()
+        for year_min, year_max, *_ in self.years:
             if year_max < year_min:
                 raise ValueError("End year cannot be before start year")
+            all_years.update(range(year_min, year_max + 1))
 
-            file_name_template = "Prod_{}_2015_2019.xlsx"  # Country code will be inserted instead of brackets
-            country_power_dfs = {}  # {country: pd.DataFrame}
+        file_name_template = "Prod_{}_2015_2019.xlsx"  # Country code will be inserted instead of brackets
+        country_power_dfs = {}  # {country: pd.DataFrame}
 
-            # List containing all the countries
-            all_countries = {country for countries in self.zones.values() for country in countries}
+        # List containing all the countries
+        all_countries = {country for countries in self.zones.values() for country in countries}
 
-            for country in all_countries:
-                file_name = file_name_template.format(country)  # Replace {} by the country code
-                sheet_name = file_name[:-5]  # filename without .xlsx
+        for country in all_countries:
+            file_name = file_name_template.format(country)  # Replace {} by the country code
+            sheet_name = file_name[:-5]  # filename without .xlsx
 
-                df = pd.read_excel(power_path / f"{file_name}", sheet_name=sheet_name, header=0)
-                df = df[(df["Début de l'heure"].dt.year >= year_min) &
-                        (df["Début de l'heure"].dt.year <= year_max)]  # Filter only the years wanted
+            df = pd.read_excel(power_path / f"{file_name}", sheet_name=sheet_name, header=0)
+            df = df[df["Début de l'heure"].dt.year.isin(all_years)]  # Filter only the years wanted
 
-                df.set_index(df.columns[0],
-                             inplace=True)  # First column (time) as index and Column name is also kept as index name
+            df.set_index(df.columns[0],
+                         inplace=True)  # First column (time) as index and Column name is also kept as index name
 
-                country_power_dfs[country] = df
+            country_power_dfs[country] = df
 
-            # Group by zone
-            for zone, countries in self.zones.items():
-                # List of DataFrames per country
-                zone_dfs = [country_power_dfs[country] for country in countries if country in country_power_dfs]
-                if not zone_dfs:
+        # Group by zone
+        for zone, countries in self.zones.items():
+            # List of DataFrames per country
+            zone_dfs = [country_power_dfs[country] for country in countries if country in country_power_dfs]
+            if not zone_dfs:
+                continue
+
+            # Sum of instantaneous powers (each hour) of all the zone's countries
+            zone_sector_power_df = pd.concat(zone_dfs).groupby(level=0).sum()
+
+            # Group by sector_group
+            zone_grouped_power_df = pd.DataFrame(index=zone_sector_power_df.index)
+
+            column_map = {
+                col.rsplit("_", 1)[0]: col
+                for col in zone_sector_power_df.columns
+                if col.endswith("_MW")
+            }
+
+            for group_name, sectors in self.sectors_group.items():
+                sector_in_group = [column_map[sector_name] for sector_name in sectors if
+                                   sector_name in column_map]
+                if not sector_in_group:
                     continue
+                zone_grouped_power_df[group_name] = zone_sector_power_df[sector_in_group].sum(axis=1)
 
-                # Sum of instantaneous powers (each hour) of all the zone's countries
-                zone_sector_power_df = pd.concat(zone_dfs).groupby(level=0).sum()
-
-                # Group by sector_group
-                zone_grouped_power_df = pd.DataFrame(index=zone_sector_power_df.index)
-
-                for group_name, sectors in self.sectors_group.items():
-                    sector_in_group = [sector_name for sector_name in sectors if
-                                       sector_name in zone_sector_power_df.columns]
-                    if not sector_in_group:
-                        continue
-                    zone_grouped_power_df[group_name] = zone_sector_power_df[sector_in_group].sum(axis=1)
-
-                # Update of the main dictionary
-                self.historical_powers[zone] = zone_grouped_power_df
+            # Update of the main dictionary
+            self.historical_powers[zone] = zone_grouped_power_df
 
         return self.historical_powers
 
@@ -283,5 +296,5 @@ class InputReader:
                                 raise ValueError(
                                     f"[{year_key}] Erreur logique : Cons_max > Cons_min pour "
                                     f"'{sector}' dans la zone '{zone}' ({cons_max} > {cons_min})"
-                                    )
+                                )
         return results

@@ -39,6 +39,7 @@ def network_setup():
         "historical_prices": historical_prices,
         "sectors_historical_powers": sectors_historical_powers,
         "storages": ["hydro pump storage"],
+        "controllable": ["hydro pump storage"],
         "zone_cls": zone_cls,
         "zone": zone,
     }
@@ -59,15 +60,20 @@ def test_add_zone(network_setup):
     network = Network()
 
     # Add zone
-    network.add_zone("FR", setup["sectors_historical_powers"], setup["storages"], setup["historical_prices"])
+    saving_data = {}
+    network.add_zone(zone_name="FR", sectors_historical_powers=setup["sectors_historical_powers"],
+                     storages=setup["storages"], controllable=setup["controllable"],
+                     historical_prices=setup["historical_prices"], saving_data=saving_data)
 
     # Check that Zone has been created with the correct parameters
     setup["zone_cls"].assert_called_once_with("FR", setup["historical_prices"])
 
     # Check add_sector et add_storage calls
-    setup["zone"].add_sector.assert_called_once_with("solar", setup["sectors_historical_powers"]["solar"])
+    setup["zone"].add_sector.assert_called_once_with("solar", setup["sectors_historical_powers"]["solar"],
+                                                     False, saving_data)
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
-                                                      setup["sectors_historical_powers"]["hydro pump storage"])
+                                                      setup["sectors_historical_powers"]["hydro pump storage"],
+                                                      True)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network.zones

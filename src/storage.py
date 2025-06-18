@@ -4,9 +4,9 @@ from src.sector import Sector
 
 
 class Storage:
-    def __init__(self, sector_name: str, historical_powers: pd.Series):
+    def __init__(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool):
         powers_load = historical_powers[historical_powers <= 0]
         powers_generator = historical_powers[historical_powers >= 0]
 
-        self.load = Sector(sector_name, powers_load, is_load=True)
-        self.generator = Sector(sector_name, powers_generator)
+        self.load = Sector(sector_name, powers_load, is_controllable=is_controllable, is_load=True)
+        self.generator = Sector(sector_name, powers_generator, is_controllable=is_controllable)
