@@ -3,42 +3,94 @@ from pathlib import Path
 
 import pandas as pd
 
+PROD_FOLDER_NAME = "Production par pays et par filière 2015-2019"
+PRICES_FOLDER_NAME = "Prix spot par an et par zone 2015-2019"
+OUTPUT_EXCEL_NAME = "Output_prices.xlsx"
+
 
 class InputReader:
+    """
+        A utility class to load, validate, and organize input data for energy price modelling
+
+        This class centralizes all logic related to:
+        - Reading user-defined configurations (zones, sector groups, storage types, etc.)
+        - Loading historical production and price data from a structured database
+        - Structuring the data for downstream modeling tasks
+
+        It handles consistency checks, grouping, and formatting of data, providing the
+        rest of the application with ready-to-use, clean input structures.
+    """
+
     def __init__(self, work_dir: Path, db_dir: Path):
-        self.work_dir = work_dir
-        self.db_dir = db_dir
+        """
+            Initializes the InputReader instance by setting the working and database directories.
+
+
+            :param work_dir: Path to the working directory where user-defined Excel file 'User_inputs.xlsx' is stored.
+            :param db_dir: Path to the database directory containing historical production and price data organized by
+                country and year.
+
+            The constructor does not load any data immediately. Data is loaded and processed
+            only when the corresponding methods (`read_user_inputs`, `read_db_powers`, etc.) are called.
+
+            Internal attributes are initialized to store:
+            - User-defined configurations (zones, sector groups, storage sectors, etc.)
+            - Historical power and price data
+        """
+
+        self._work_dir: Path = work_dir
+        self._db_dir: Path = db_dir
 
         # Updated in self._read_user_inputs()
-        self.zones = dict()
-        self.sectors_group = dict()
-        self.storages = set()
-        self.controllable = set()
-        self.years = list()
-        self.prices_init = list()
+        self._zones: dict[str, list[str]] = dict()
+        self._sectors_group: dict[str, set[str]] = dict()
+        self._storages: set[str] = set()
+        self._controllable_sectors: set[str] = set()
+        self._years: list[tuple[int, int]] = list()
+        self._prices_init: dict[str, tuple] = dict()
 
         # Updated in self._read_db_powers() & self._read_db_prices()
-        self.historical_powers: dict[str, pd.DataFrame] = dict()
-        self.historical_prices = pd.DataFrame()
+        self._historical_powers: dict[str, pd.DataFrame] = dict()
+        self._historical_prices = pd.DataFrame()
+
+    @property
+    def work_dir(self):
+        return self._work_dir
 
     def read_user_inputs(self):
         """
-        Read user inputs of group years, countries and sectors. (2017-2019) means 'from 2017 to 2019'.
+        Reads user-defined configuration from the Excel file 'User_inputs.xlsx' and updates the attributes of the class
 
-        self.years: List of years group whose prices hypothesis must be read. A year group is start year and end year.
-        self.zones: Dictionary listing zone to whose prices hypothesis must be read.
-        self.sectors_group: Dictionary listing production mode whose prices hypothesis must be read.
-        self.storages: List of production mode that are actually storages.
+        Parses data related to:
+        - Year groups and associated price intervals
+        - Geographical zones (mapping countries to zones)
+        - Sector groups (mapping detailed sectors to main groups)
+        - Storage and controllable classifications from clustering data
 
-        Example of stored data dictionary:
-         - self.years =  [(2015, 2016, p0 min, p0 max, p100 min, p100 max, step grid crossing)]
-         - self.zones =  {"IBR": ["ES", "PT"], "FRA": ["FR"]}
-         - self.sectors_group = {"Fossil": ["fossil_gas", "fossil_hard_coal"], "Storage": ["hydro_pumped_storage"]}
-         - self.storages=  {Storage}
+        :raise:
+            FileNotFoundError: If the input Excel file is missing.
+            ValueError: If required columns are missing or contain inconsistent data.
 
+        :return:
+            tuple: (
+                List of (year_min, year_max),
+                List of zone names,
+                List of main sector names,
+                Set of storage sector names,
+                Set of controllable sector names,
+                Dictionary of initial prices per year group
+            )
+
+        Example :
+            - self._years =  [(2015, 2016)]
+            - list(self._zones.keys()) =  ["IBR", "FRA"]
+            - list(self._sectors_group.keys()) = ["Fossil", "Storage", "Nuclear"]
+            - self._storages =  [Storage]
+            - self._controllable_sectors = ["Fossil", "Nuclear"]
+            - self._prices_init = {"2015-2016" : (0, 100, 0, 100, 10)}
         """
 
-        file_path = self.work_dir / "User_inputs.xlsx"
+        file_path = self._work_dir / "User_inputs.xlsx"
 
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -69,17 +121,17 @@ class InputReader:
             nb_initial_prices = 10
             df_years['step grid crossing'] = (((df_years['Max initial price'] - df_years['Min initial price'])
                                                / nb_initial_prices).round().astype(int))
-            self.years = list(zip(df_years['Year min'], df_years['Year max']))
+            self._years = list(zip(df_years['Year min'], df_years['Year max']))
 
-            self.prices_init = {f"{year_min}-{year_max}": (min_price_1, max_price_1, min_price_2, max_price_2, step)
-                                for (year_min, year_max), min_price_1, max_price_1, min_price_2, max_price_2, step in
-                                zip(
-                                    self.years,
-                                    df_years['Min initial price'], df_years['Max initial price'],
-                                    df_years['Min initial price'], df_years['Max initial price'],
-                                    df_years['step grid crossing']
-                                )
-                                }
+            self._prices_init = {f"{year_min}-{year_max}": (min_price_1, max_price_1, min_price_2, max_price_2, step)
+                                 for (year_min, year_max), min_price_1, max_price_1, min_price_2, max_price_2, step in
+                                 zip(
+                                     self._years,
+                                     df_years['Min initial price'], df_years['Max initial price'],
+                                     df_years['Min initial price'], df_years['Max initial price'],
+                                     df_years['step grid crossing']
+                                 )
+                                 }
 
             # --- Extract country groups ---
             df_zones = xls.parse('Zones', dtype=str)
@@ -96,7 +148,7 @@ class InputReader:
             check_columns(df_clustering, {'Main sector', 'Is storage', 'Is controllable'}, 'Clustering')
 
             storages_group = df_clustering[df_clustering['Is storage'] == 1.0]['Main sector'].dropna().unique().tolist()
-            controllable_group = df_clustering[df_clustering['Is controllable'] == 1.0][
+            controllable_sectors = df_clustering[df_clustering['Is controllable'] == 1.0][
                 'Main sector'].dropna().unique().tolist()
 
             # --- Validation: Check if all zones & main sectors in Clustering exist in other sheets ---
@@ -112,27 +164,41 @@ class InputReader:
                     f"The following 'Zone' values from 'Clustering' do not appear in sheet 'Zones': {unused_zones}",
                     stacklevel=2)
 
-            self.zones = zones
-            self.sectors_group = sectors_group
-            self.storages = storages_group
-            self.controllable = controllable_group
+            self._zones = zones
+            self._sectors_group = sectors_group
+            self._storages = storages_group
+            self._controllable_sectors = controllable_sectors
 
         except Exception as e:
             raise ValueError(f"Error while reading the Excel file: {e}")
 
-        return (self.years, list(self.zones.keys()), list(self.sectors_group.keys()), self.storages, self.controllable,
-                self.prices_init)
+        return (self._years, list(self._zones.keys()), list(self._sectors_group.keys()), set(self._storages),
+                set(self._controllable_sectors), self._prices_init)
 
     def read_db_powers(self):
         """
-        Reads the production DataBase and creates a dictionary {zone: DataFrame}
-        DataFrame with Time index and sectors groups as columns
+        Reads historical production data from Excel files in the database directory.
+
+        For each country and year defined in `self._years`, extracts hourly production data,
+        groups it by zones, and aggregates it by sector groups.
+
+        :raise:
+            ValueError: If the year range is inconsistent (e.g., end year < start year).
+
+        :return:
+            dict[str, pd.DataFrame]: Dictionary mapping zones names to DataFrames of aggregated
+            sector historical power data (per main sector) indexed by time. Columns names are the main sectors names.
         """
-        power_path = self.db_dir / "Production par pays et par filière 2015-2019"
+        power_path = self._db_dir / PROD_FOLDER_NAME
+
+        # Checks if User Inputs have been read, raises an error if not
+        if self._years is None:
+            raise Exception("Attribute _years is empty, User inputs have not been read. "
+                            "Call 'read_user_inputs()' before accessing this data.")
 
         # Build all years to read
         all_years = set()
-        for year_min, year_max, *_ in self.years:
+        for year_min, year_max in self._years:
             if year_max < year_min:
                 raise ValueError("End year cannot be before start year")
             all_years.update(range(year_min, year_max + 1))
@@ -141,13 +207,13 @@ class InputReader:
         country_power_dfs = {}  # {country: pd.DataFrame}
 
         # List containing all the countries
-        all_countries = {country for countries in self.zones.values() for country in countries}
+        all_countries = {country for countries in self._zones.values() for country in countries}
 
         for country in all_countries:
             file_name = file_name_template.format(country)  # Replace {} by the country code
             sheet_name = file_name[:-5]  # filename without .xlsx
 
-            df = pd.read_excel(power_path / f"{file_name}", sheet_name=sheet_name, header=0)
+            df = pd.read_excel(power_path / f"{file_name}", sheet_name=sheet_name)
             df = df[df["Début de l'heure"].dt.year.isin(all_years)]  # Filter only the years wanted
 
             df.set_index(df.columns[0],
@@ -156,10 +222,10 @@ class InputReader:
             country_power_dfs[country] = df
 
         # Group by zone
-        for zone, countries in self.zones.items():
+        for zone, countries in self._zones.items():
             # List of DataFrames per country
             zone_dfs = [country_power_dfs[country] for country in countries if country in country_power_dfs]
-            if not zone_dfs:
+            if len(zone_dfs) == 0:
                 continue
 
             # Sum of instantaneous powers (each hour) of all the zone's countries
@@ -174,26 +240,40 @@ class InputReader:
                 if col.endswith("_MW")
             }
 
-            for group_name, sectors in self.sectors_group.items():
+            for group_name, sectors in self._sectors_group.items():
                 sector_in_group = [column_map[sector_name] for sector_name in sectors if
                                    sector_name in column_map]
-                if not sector_in_group:
+                if len(sector_in_group) == 0:
                     continue
                 zone_grouped_power_df[group_name] = zone_sector_power_df[sector_in_group].sum(axis=1)
 
             # Update of the main dictionary
-            self.historical_powers[zone] = zone_grouped_power_df
+            self._historical_powers[zone] = zone_grouped_power_df
 
-        return self.historical_powers
+        return self._historical_powers
 
     def read_db_prices(self):
         """
-        Reads the price DataBase and creates a DataFrame with Time index and zones as columns
+        Reads historical spot price data from Excel files in the database directory.
+
+        For each year and zone, computes the mean price of all associated countries per hour.
+
+        :raise:
+            ValueError: If the year range is inconsistent (e.g., end year < start year).
+
+        :return:
+            pd.DataFrame: A DataFrame indexed by time, with one column per zone,
+            containing average spot prices.
         """
-        price_path = self.db_dir / "Prix spot par an et par zone 2015-2019"
+        price_path = self._db_dir / PRICES_FOLDER_NAME
         all_dfs = []  # List of Dataframes (one per year) to concatenate
 
-        for (year_min, year_max, *_) in self.years:  # For each year group
+        # Checks if User Inputs have been read, raises an error if not
+        if self._years is None:
+            raise Exception("Attribute _years is empty, User inputs have not been read. "
+                            "Call 'read_user_inputs()' before accessing this data.")
+
+        for year_min, year_max in self._years:  # For each year group
 
             if year_max < year_min:
                 raise ValueError("End year cannot be before start year")
@@ -205,40 +285,68 @@ class InputReader:
                 sheet_name = file_name[:-5]  # filename without .xlsx
 
                 # index_col = 0 to set column time as index
-                df = pd.read_excel(price_path / file_name, sheet_name=sheet_name, header=0, index_col=0)
+                df = pd.read_excel(price_path / file_name, sheet_name=sheet_name, index_col=0)
                 df_cleaned = df.apply(pd.to_numeric, errors='coerce')  # convert unconvertible strings into NaN
 
                 zone_df = pd.DataFrame(index=df_cleaned.index)
 
-                for zone, countries in self.zones.items():
-                    # Keep only columns of countries belonging to the current zone
-                    zone_columns = [col for col in df_cleaned.columns if
-                                    any(col.startswith(country) for country in countries)]
-                    if not zone_columns:
-                        continue  # skip if no column is matching
+                for zone, countries in self._zones.items():
+                    # Dictionary to store the dataframes of all the countries' areas
+                    country_averages = {}
 
-                    # Mean of all countries data in the current zone
-                    zone_df[zone] = df_cleaned[zone_columns].mean(axis=1)
+                    for country in countries:
+                        # Find all the columns beginning by the country code
+                        country_columns = [col for col in df_cleaned.columns if col.startswith(country)]
+                        if len(country_columns) == 0:
+                            continue  # ignore the country if there is no column corresponding
 
-                all_dfs.append(zone_df)
+                        # Mean of the country's areas prices
+                        country_averages[country] = df_cleaned[country_columns].mean(axis=1)
 
-        # Update of the main DataFrame
-        self.historical_prices = pd.concat(all_dfs).sort_index()
+                    if len(country_averages) == 0:
+                        continue  # ignore the whole zone if there is no column corresponding
 
-        return self.historical_prices
+                    country_avg_df = pd.DataFrame(country_averages)
+
+                    # Average of the countries prices in the zone
+                    zone_df[zone] = country_avg_df.mean(axis=1)
+
+                all_dfs.append(zone_df)  # Storing all zones data in the all_dfs dataframe (for one year)
+
+        # Storing all studied years data in the main dataframe
+        self._historical_prices = pd.concat(all_dfs).sort_index()
+
+        return self._historical_prices
 
     def read_price_models(self) -> dict:
+        # FIXME : change the whole function to recreate the network class based on the excel
+        #  (instead of nested dictionary) - will be done for OPF
         """
-        Reconstructs the results dictionary from the Output_prices.xlsx file.
-        Returns:
-            results (dict): structure [years][zone][main_sector] = [cons_full, cons_none, prod_none, prod_full]
+        Reads computed price results from 'Output_prices.xlsx' and reconstructs a nested dictionary.
+
+        The results dictionary has the following structure:
+        results[year][zone][sector] = [cons_full, cons_none, prod_none, prod_full]
+
+        Verifies logical consistency:
+        - Storage-only sectors may have consumption values.
+        - prod_min must be ≤ prod_max.
+        - cons_max must be ≤ cons_min.
+
+        :raise:
+            ValueError: If any data inconsistency or unknown price type is detected.
+
+        :return:
+            dict: Nested dictionary containing computed prices per year, zone, and sector.
         """
         results = {}
-        file_path = self.work_dir / "results" / "Output_prices.xlsx"
+        # TODO : change the folder name, only results otherwise take the last created one
+
+        folder_path = self._work_dir / "results"
+        file_path = folder_path / OUTPUT_EXCEL_NAME
         sheet_names = pd.ExcelFile(file_path).sheet_names
 
         for sheet_name in sheet_names:
-            df = pd.read_excel(file_path, sheet_name=sheet_name, header=0, index_col=0)
+            df = pd.read_excel(file_path, sheet_name=sheet_name, index_col=0)
 
             year_key = sheet_name
             results[year_key] = {}
@@ -275,26 +383,26 @@ class InputReader:
                         cons_max, cons_min, prod_min, prod_max = values
 
                         # No consumption if non-storage
-                        if sector not in self.storages:
+                        if sector not in self._storages:
                             if any(price is not None for price in [cons_max, cons_min]):
                                 raise ValueError(
-                                    f"[{year_key}] Le secteur '{sector}' dans la zone '{zone}' "
-                                    "n'est pas un stockage et ne doit pas contenir de consommation."
+                                    f"[{year_key}] Sector '{sector}' in zone '{zone}' "
+                                    "is not storage and must not contain consumption."
                                 )
 
                         # Check if Prod_min <= Prod_max
                         if prod_min is not None and prod_max is not None:
                             if prod_min > prod_max:
                                 raise ValueError(
-                                    f"[{year_key}] Erreur logique : Prod_min > Prod_max "
-                                    f"pour '{sector}' dans la zone '{zone}' ({prod_min} > {prod_max})"
+                                    f"[{year_key}] Logical error: Prod_min > Prod_max "
+                                    f"for '{sector}' in zone '{zone}' ({prod_min} > {prod_max})"
                                 )
 
                         # Check if Cons_max <= Cons_min
                         if cons_max is not None and cons_min is not None:
                             if cons_max > cons_min:
                                 raise ValueError(
-                                    f"[{year_key}] Erreur logique : Cons_max > Cons_min pour "
-                                    f"'{sector}' dans la zone '{zone}' ({cons_max} > {cons_min})"
+                                    f"[{year_key}] Logical error : Cons_max > Cons_min for "
+                                    f"'{sector}' in zone '{zone}' ({cons_max} > {cons_min})"
                                 )
         return results

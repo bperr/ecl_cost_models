@@ -39,7 +39,7 @@ def network_setup():
         "historical_prices": historical_prices,
         "sectors_historical_powers": sectors_historical_powers,
         "storages": ["hydro pump storage"],
-        "controllable": ["hydro pump storage"],
+        "controllable_sectors": ["hydro pump storage"],
         "zone_cls": zone_cls,
         "zone": zone,
     }
@@ -60,28 +60,27 @@ def test_add_zone(network_setup):
     network = Network()
 
     # Add zone
-    saving_data = {}
     network.add_zone(zone_name="FR", sectors_historical_powers=setup["sectors_historical_powers"],
-                     storages=setup["storages"], controllable=setup["controllable"],
-                     historical_prices=setup["historical_prices"], saving_data=saving_data)
+                     storages=setup["storages"], controllable_sectors=setup["controllable_sectors"],
+                     historical_prices=setup["historical_prices"])
 
     # Check that Zone has been created with the correct parameters
     setup["zone_cls"].assert_called_once_with("FR", setup["historical_prices"])
 
     # Check add_sector et add_storage calls
     setup["zone"].add_sector.assert_called_once_with("solar", setup["sectors_historical_powers"]["solar"],
-                                                     False, saving_data)
+                                                     False)
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       setup["sectors_historical_powers"]["hydro pump storage"],
                                                       True)
 
     # Check that zone has been added to networks.zone
-    assert setup["zone"] in network.zones
+    assert setup["zone"] in network._zones
 
 
 def test_build_price_models(network_setup):
     network = Network()
-    network.zones.append(network_setup["zone"])
+    network._zones.append(network_setup["zone"])
 
     # Calls build_price_models
     network.build_price_models((0, 100, 0, 100, 10))
@@ -104,7 +103,7 @@ def test_check_price_models_valid(network_setup):
     sector_2 = make_sector("battery", (20, 10), True)  # c0 >= c100
 
     zone.sectors = [sector_1, sector_2]
-    network.zones = [zone]
+    network._zones = [zone]
 
     # Should not raise
     network.check_price_models()
@@ -125,7 +124,7 @@ def test_check_price_models_raises_errors(network_setup, name, price_model, is_l
     bad_sector.is_load = is_load
 
     zone.sectors = [bad_sector]
-    network.zones = [zone]
+    network._zones = [zone]
 
     with pytest.raises(ValueError, match=expected_error):
         network.check_price_models()

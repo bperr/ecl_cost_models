@@ -8,26 +8,54 @@ from scipy.optimize import minimize
 
 
 class Sector:
+    """
+        Represents an energy producing sector (among main sectors defined in the User Inputs) within a zone, some
+        sectors are also "consuming" power (storages that store energy).
+
+        This class handles the historical power data of the sector, models its availability,
+        and builds a price model based on historical energy prices and power usage.
+    """
+
     def __init__(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, is_load: bool = False):
-        self.name = sector_name
-        self.historical_powers = historical_powers
-
-        # price_full_power,price_no_power (consumption or production)
-        self._price_model = tuple()
-        self.is_controllable = is_controllable
-        self.is_load = is_load
-
-        self.powers_out = list()
-        self.availabilities = pd.Series()
-
-    def _compute_utilization_ratio(self, price: float, price_no_power: float, price_full_power: float):
         """
-        Compute the utilization ratio associated to the input price, for the input price model
+            Initializes a new Sector instance.
+            :param sector_name: Name of the sector.
+            :param historical_powers: Historical power consumption (negative) or production (positive) in MW
+            :param is_controllable: Whether the sector's power usage is controllable.
+            :param is_load: Whether the sector is a consumer (True) or producer (False).
+        """
+        self._name: str = sector_name
+        self._historical_powers: pd.Series = historical_powers  # in MW
+
+        self._price_model = tuple()  # (price_no_power, price_full_power) in €/MWh
+        self._is_controllable = is_controllable
+        self._is_load = is_load
+
+        self._powers_out = pd.Series()  # in MW
+        self._availabilities = pd.Series()  # in MW
+
+    @property
+    def name(self):
+        """Returns the name of the sector."""
+        return self._name
+
+    @property
+    def is_load(self):
+        """Returns True if the sector is a consumer (load), otherwise False."""
+        return self._is_load
+
+    def _compute_use_ratio(self, price: float, price_no_power: float, price_full_power: float):
+        """
+        Computes the use ratio for a given electricity price and given model prices
+
         :param price: Electricity price (€/MWh)
-        :param price_no_power: Price from which production is possible
-        :param price_full_power: Price from which full power is possible
-        :return: Offered power (between 0 and 1) for the input price
+        :param price_no_power: Price where power usage starts (threshold) in €/MWh
+        :param price_full_power: Price where full power usage is reached in €/MWh
+
+        :return:
+            float : The use ratio (between 0 and 1 for production, 0 and -1 for consumption)
         """
+
         if price_no_power == price_full_power:
             if self.is_load:
                 return -1 if price <= price_no_power else 0
@@ -48,13 +76,34 @@ class Sector:
             return (price - price_no_power) / (price_full_power - price_no_power)
 
     def build_price_model(self, historical_prices: pd.Series, prices_init: tuple, zone_name: str):
-        # Error function + Optimisation
-        # utilization ratio : self.historical_power / self.availabilities (check si self.availabilities non vide)
-        # self._price_model = (Cons_max, Cons_min, Prod_min, Prod_max)
+        """
+            Builds a price model based on historical prices and power use.
+            Updates the attribute _price_model = (price_no_power, price_full_power)
+            These prices are set as (None,None) if there is no data available for the zone or sector
 
-        # If the sector powers data is empty or full of 0 then the optimisation is skipped
-        # and no prices are given in the output
-        powers_check = self.historical_powers.replace(0, pd.NA).dropna()
+            The model is optimized to minimize the difference between real and modelled mean and standard deviation
+            of the use ratio. Use ratio is calculated as historical_power / availability at each time step
+            (not considered when there is no available power)
+
+            The initialisation of the prices is made by finding the minimum loss with the
+            initialisation bounds and step (prices_init).
+
+            :param historical_prices: Historical energy prices for the zone concerned
+            :param prices_init: Tuple of bounds and step size for price search
+            :param zone_name: Name of the zone (for warning messages and output labeling).
+
+            :raise: warning if there is no data of historical power for this sector or no historical prices for
+                the current zone
+            :return: None
+        """
+
+        powers_check = self._historical_powers.replace(0, pd.NA).dropna()
+        prices_check = historical_prices.replace(0, pd.NA).dropna()
+
+        if prices_check.empty:
+            self._price_model = (None, None)
+            return
+
         if powers_check.empty:
             self._price_model = (None, None)
             warnings.warn(f"No data available or no production for {self.name} in {zone_name}, "
@@ -63,32 +112,32 @@ class Sector:
 
         def error_function(x: np.array):
             """
-            Compute error between the modeled and historical utilization ratios distributions,
+            Compute error between the modeled and historical use ratios distributions,
             using statistical moments (mean and std) of power.
 
             :param x: [price_no_power, price_full_power]
             :return: error based on difference in moments
             """
 
-            modelled_utilization_ratios = []
+            modelled_use_ratios = []
 
             for price in historical_prices:
-                utilization_ratio = self._compute_utilization_ratio(
+                use_ratio = self._compute_use_ratio(
                     price=price,
                     price_no_power=x[0],
                     price_full_power=x[1]
                 )
 
-                modelled_utilization_ratios.append(utilization_ratio)
+                modelled_use_ratios.append(use_ratio)
 
-            modelled_utilization_ratios = np.array(modelled_utilization_ratios)
-            mu_model, sigma_model = np.mean(modelled_utilization_ratios), np.std(modelled_utilization_ratios)
+            modelled_use_ratios = np.array(modelled_use_ratios)
+            mu_model, sigma_model = np.mean(modelled_use_ratios), np.std(modelled_use_ratios)
 
             # Extract historical values (mean and standard deviation) - avoid division by 0
-            historical_utilization_ratios = (self.historical_powers[self.availabilities != 0]
-                                             / self.availabilities[self.availabilities != 0])
+            historical_use_ratios = (self._historical_powers[self._availabilities != 0]
+                                     / self._availabilities[self._availabilities != 0])
 
-            mu_hist, sigma_hist = np.mean(historical_utilization_ratios), np.std(historical_utilization_ratios)
+            mu_hist, sigma_hist = np.mean(historical_use_ratios), np.std(historical_use_ratios)
 
             # Objective function is the MSE between mean and std of powers in the year (modelled / historical)
             mean_error = (mu_model - mu_hist) ** 2
@@ -104,9 +153,6 @@ class Sector:
             constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]}  # max_price-min_price must be positive
 
         # Prices initialisation
-        step_prices_init = prices_init[-1]
-        potential_prices_init = []
-
         if self.is_load:  # consumption mode
             min_price_full_power, max_price_full_power, min_price_no_power, max_price_no_power, _ = prices_init
             prices_in_order = lambda x, y: y <= x  # noqa
@@ -117,6 +163,12 @@ class Sector:
             prices_in_order = lambda x, y: x <= y  # noqa
             label = "p"
 
+        step_prices_init = prices_init[-1]
+        potential_prices_init = []
+
+        # evaluate all valid combinations - defined above in prices_in_order - of (price_no_power, price_full_power)
+        # within the defined bounds and step size to find the one that minimizes the error function. This value is
+        # used as initial value for the optimisation
         for price_no_power in range(min_price_no_power, max_price_no_power + step_prices_init, step_prices_init):
             for price_full_power in range(min_price_full_power, max_price_full_power + step_prices_init,
                                           step_prices_init):
@@ -136,65 +188,88 @@ class Sector:
         self._price_model = round(float(res.x[0]), 0), round(float(res.x[1]), 0)
 
     def build_availabilities(self):
-        if self.name == "nuclear":  # availability = max power on the current period (+/- 2 weeks)
+        """
+            Builds the availability series for the sector based on historical power data.
+
+            - For nuclear, availability is the max of ±2 weeks window.
+            - For controllable fossil/storage, it's a fixed power rating.
+            - For renewables, it's equal to the historical production at each time.
+
+            :return:
+                pd.Series: Availability time series.
+        """
+        expected_nuclear_sector_name = "nuclear"
+        half_window_days = 15
+        hours_in_day = 24
+
+        # nuclear availability modelling = max power on the current period (+/- 2 weeks)
+        if self.name.lower() == expected_nuclear_sector_name:
             availabilities = []
-            timestamps = self.historical_powers.index
+            timestamps = self._historical_powers.index
             total_len = len(timestamps)
             for i, ts in enumerate(timestamps):
-                if i < 14 * 24:
+                if i < half_window_days * hours_in_day:
                     # First half-month availability data = max of production during the first month
                     start = ts
-                    end = ts + pd.Timedelta(days=30)
-                elif i > total_len - 14 * 24:
+                    end = ts + pd.Timedelta(days=2 * half_window_days)
+                elif i > total_len - half_window_days * hours_in_day:
                     # Last half-month availability data = max of production during the last month
-                    start = ts - pd.Timedelta(days=30)
+                    start = ts - pd.Timedelta(days=2 * half_window_days)
                     end = ts
                 else:
-                    # Période "équilibrée" : max sur +/- 2 semaines
-                    start = ts - pd.Timedelta(days=14)
-                    end = ts + pd.Timedelta(days=14)
+                    # Nominal period : max on +/- 2 weeks
+                    start = ts - pd.Timedelta(days=half_window_days)
+                    end = ts + pd.Timedelta(days=half_window_days)
 
-                window = self.historical_powers[start:end]
+                window = self._historical_powers[start:end]
                 availabilities.append(window.max())
 
-            self.availabilities = pd.Series(availabilities, index=timestamps)
+            self._availabilities = pd.Series(availabilities, index=timestamps)
 
         else:
             # fossil & storage : availability is supposed to be the maximum power called during the year
-            if self.is_controllable:
+            if self._is_controllable:
                 if self.is_load:
-                    power_rating = self.historical_powers.min()
+                    power_rating = self._historical_powers.min()
                 else:
-                    power_rating = self.historical_powers.max()
+                    power_rating = self._historical_powers.max()
 
-                self.availabilities = pd.Series(data=[abs(power_rating)] * len(self.historical_powers),
-                                                index=self.historical_powers.index)
+                self._availabilities = pd.Series(data=[abs(power_rating)] * len(self._historical_powers),
+                                                 index=self._historical_powers.index)
             else:  # Renewable : produced power is supposed to be equal to the available power at any time
-                self.availabilities = self.historical_powers
-
-        return self.availabilities  # In order to evaluate the availabilities assumptions for french nuclear
+                self._availabilities = self._historical_powers
 
     @property
     def price_model(self):
+        """Returns the estimated price model as a tuple (price_no_power, price_full_power)."""
         return self._price_model
 
     def plot_result(self, zone_name: str, historical_prices: pd.Series, path: Path):
-        if self.price_model != (None, None):
+        """
+            Plots the historical use ratios vs. price and the resulting piecewise linear model.
+
+            :param zone_name: Name of the zone for plot labeling.
+            :param historical_prices: Historical price data.
+            :param path: Path where the figure will be saved as a PNG.
+
+            :return: None
+        """
+
+        if self._price_model != (None, None):
             fig = plt.figure()
-            x_min: float = -50
-            x_max: float = 200
+            x_min: float = -50.
+            x_max: float = 200.
 
             prices = historical_prices
-            utilization_ratios = (self.historical_powers[self.availabilities != 0]
-                                  / self.availabilities[self.availabilities != 0])
+            use_ratios = (self._historical_powers[self._availabilities != 0]
+                          / self._availabilities[self._availabilities != 0])
 
-            # Dirty but useful to deal with doubled timesteps around 25-30/10
+            # Get mean of duplicate time steps (clocks change)
             prices = prices.groupby(prices.index).mean()
-            utilization_ratios = utilization_ratios.groupby(utilization_ratios.index).mean()
+            use_ratios = use_ratios.groupby(use_ratios.index).mean()
 
-            aligned = pd.concat([prices.rename("price"), utilization_ratios.rename("utilization_ratio")],
-                                axis=1).dropna()
-            plt.scatter(aligned["price"], aligned["utilization_ratio"], s=7)
+            aligned = pd.concat([prices, use_ratios], axis=1).dropna()
+            plt.scatter(aligned.iloc[:, 0], aligned.iloc[:, 0], s=7)
 
             if self.is_load:
                 model_y = [-1, -1, 0, 0]
@@ -213,7 +288,7 @@ class Sector:
             plt.plot(model_x, model_y, c='red')
             plt.xlim(x_min, x_max)
             plt.xlabel("Price (€)")
-            plt.ylabel("utilization ratio")
+            plt.ylabel("use ratio")
             fig.suptitle(title, fontsize=10)
             plt.savefig(path)
             plt.close()

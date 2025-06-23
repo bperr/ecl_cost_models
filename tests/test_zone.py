@@ -1,9 +1,8 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 import pandas as pd
 import pytest
 from pandas import Timestamp
-from pandas.testing import assert_series_equal
 
 from src.zone import Zone
 
@@ -69,9 +68,8 @@ def test_add_sector(zone_test_setup):
     sector_cls = zone_test_setup["sector_cls"]  # fake Sector class
     sector = zone_test_setup["sector"]  # fake instance of sector_cls
 
-    saving_data = {}
     is_controllable = False
-    zone.add_sector("solar", historical_powers, is_controllable=is_controllable, saving_data=saving_data)
+    zone.add_sector("solar", historical_powers, is_controllable=is_controllable)
 
     # Checks that Sector has been instantiated with the correct arguments
     sector_cls.assert_called_once_with("solar", historical_powers, is_controllable)
@@ -96,42 +94,40 @@ def test_add_storage(zone_test_setup):
     # (and that the object storage to the storages list)
     assert storage.load in zone.sectors
     assert storage.generator in zone.sectors
-    assert storage in zone.storages
+    assert storage in zone._storages
 
 
 def test_build_price_model(zone_test_setup):
     zone = zone_test_setup["zone"]
     powers = zone_test_setup["powers"]
     sector = zone_test_setup["sector"]
-    saving_data = {}
     is_controllable = False
 
-    zone.add_sector("solar", powers, is_controllable, saving_data)
+    zone.add_sector("solar", powers, is_controllable)
 
     zone.build_price_model((10, 100, 0, 100, 20))
 
     # Checks that the internal sector method has been called
     sector.build_price_model.assert_called_once_with(
-        historical_prices=zone.historical_prices,
+        historical_prices=zone._historical_prices,
         prices_init=(10, 100, 0, 100, 20),
-        zone_name=zone.name,
+        zone_name=zone._name
     )
 
-    assert isinstance(zone.historical_prices, pd.Series)
-    assert all(isinstance(idx, pd.Timestamp) for idx in zone.historical_prices.index)
+    assert isinstance(zone._historical_prices, pd.Series)
+    assert all(isinstance(idx, pd.Timestamp) for idx in zone._historical_prices.index)
 
 
 def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_path):
     zone = zone_test_setup["zone"]
     sector = zone_test_setup["sector"]
     storage = zone_test_setup["storage"]
-    saving_data = {}
     is_controllable = False
 
     # Add a production sector (non-storage)
     sector.is_load = False
     zone.add_sector("solar", zone_test_setup["powers"],
-                    is_controllable=is_controllable, saving_data=saving_data)
+                    is_controllable=is_controllable)
 
     # Add a storage --> add 2 sectors (load and generator)
     storage.load.is_load = True  # Storage mock
@@ -161,14 +157,12 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
         expected_path = call["path"]
 
         # Check that the method has been called once
-        mock_obj.plot_result.assert_called_once()
-
-        # Get the called arguments
-        kwargs = mock_obj.plot_result.call_args.kwargs
-
-        # Checks zone_name & path called
-        assert kwargs["zone_name"] == "EU"
-        assert kwargs["path"] == expected_path
+        mock_obj.plot_result.assert_called_once_with(
+            zone_name="EU",
+            path=expected_path,
+            historical_prices=ANY
+        )
 
         # Check that historical_prices is well called (values, index, dtype, etc.)
-        assert_series_equal(kwargs["historical_prices"], zone_test_setup["historical_prices"])
+        kwargs = mock_obj.plot_result.call_args.kwargs
+        pd.testing.assert_series_equal(kwargs["historical_prices"], zone_test_setup["historical_prices"])

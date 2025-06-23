@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 from pandas import Timestamp
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call, ANY
 
 from src.storage import Storage
 
@@ -20,11 +20,11 @@ def storage_setup():
     sector = patch("src.storage.Sector")
     sector_cls = sector.start()
 
-    # Mocks pour load et generator
+    # Load et generator sectors mocks
     sector_load = MagicMock(name="sector_load")
     sector_generator = MagicMock(name="sector_generator")
 
-    # Configuration du comportement du mock : 1er appel pour load, 2e pour generator
+    # Configuring mock behaviour: 1st call for load, 2nd for generator
     sector_cls.side_effect = [sector_load, sector_generator]
 
     yield {
@@ -46,23 +46,28 @@ def test_storage_initializes_load_and_generator(storage_setup):
     # Creation of the object storage
     storage = Storage("hydro pump storage", powers, is_controllable=True)
 
-    # Check that Sector class has been called twice
+    # Check that Sector class has been called properly
     assert sector_cls.call_count == 2
 
-    # Get the calls of Sector class
-    load_call, generator_call = sector_cls.call_args_list
+    expected_calls = [
+        call("hydro pump storage", ANY, is_controllable=True, is_load=True),
+        call("hydro pump storage", ANY, is_controllable=True)
+    ]
 
-    # Check the names
-    assert load_call.args[0] == "hydro pump storage"
-    assert generator_call.args[0] == "hydro pump storage"
+    sector_cls.assert_has_calls(expected_calls, any_order=False)
 
-    # Check the powers series
-    assert load_call.args[1].equals(powers[powers <= 0])
-    assert generator_call.args[1].equals(powers[powers >= 0])
+    # Verify series in calls
+    actual_calls = sector_cls.call_args_list
 
-    # Check the parameter is_load
-    assert load_call.kwargs.get("is_load") is True
-    assert generator_call.kwargs.get("is_load", False) is False
+    # Load call
+    load_call = actual_calls[0]
+    expected_load_series = powers[powers <= 0]
+    pd.testing.assert_series_equal(load_call.args[1], expected_load_series)
+
+    # Generator call
+    generator_call = actual_calls[1]
+    expected_generator_series = powers[powers >= 0]
+    pd.testing.assert_series_equal(generator_call.args[1], expected_generator_series)
 
     # Check the attributes
     assert storage.load is sector_load

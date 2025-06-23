@@ -155,7 +155,7 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     set_parse_side_effect(dataframes=dataframes, mocks=mocks)
 
     # Run test
-    years, zones, main_sectors, storages, controllable, prices_init = setup["data"]["reader"].read_user_inputs()
+    years, zones, main_sectors, storages, controllable_sectors, prices_init = setup["data"]["reader"].read_user_inputs()
 
     # Check mocks call
     mocks["pathlib.Path.exists"].assert_called_once_with(fake_file_path)
@@ -180,8 +180,8 @@ def test_read_user_inputs_returns_expected_results_while_raising_warnings(setup)
     assert prices_init == {'2015-2016': (0, 120, 0, 120, 12)}
     assert zones == ['IBR']
     assert main_sectors == ['RES', 'Storage']
-    assert storages == ["Storage"]
-    assert controllable == ["Storage", "Nuclear"]
+    assert storages == {"Storage"}
+    assert controllable_sectors == {"Storage", "Nuclear"}
 
 
 # -------------- Tests for DataBase -------------- #
@@ -247,22 +247,22 @@ def prod_setup():
                               ])
 
     def filename_to_df(filename: str) -> pd.DataFrame:
-        if "AT" in filename:
+        if "_AT_" in filename:
             return at_prod_df
-        if "DE" in filename:
+        if "_DE_" in filename:
             return de_prod_df
-        if "FR" in filename:
+        if "_FR_" in filename:
             return fr_prod_df
-        if "ES" in filename:
+        if "_ES_" in filename:
             return es_prod_df
-        if "PT" in filename:
+        if "_PT_" in filename:
             return pt_prod_df
         raise Exception(f"Unexpected filename {filename}")
 
     # This line tells python to emulate 'read_excel' function and to apply the side_effect instead
     # Therefore, calling 'read_excel' will call filename_to_df and return the expected dataframe
     read_excel_mock = patch("pandas.read_excel",
-                            side_effect=lambda filename, **kwargs: filename_to_df(filename.stem)).start()
+                            side_effect=lambda filename, **kwargs: filename_to_df(filename.name)).start()
 
     yield {'reader': reader,
            'fake directories': {
@@ -280,11 +280,12 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
     fake_folder_path = prod_setup["fake directories"]["fake db dir"] / "Production par pays et par filière 2015-2019"
 
     reader = prod_setup["reader"]
-    reader.years = [(2015, 2015, 0, 120, 0, 120, 12)]
-    reader.zones = {"FR": ["FR"], "DE": ["DE"], "IBR": ['ES', 'PT']}
-    reader.sectors_group = {'biomass': {'biomass'},
-                            'fossil_gas': {'fossil_gas'},
-                            'RES': {'solar', 'wind'}}
+    reader._years = [(2015, 2015)]
+    reader._prices_init = {"2015-2015": (0, 120, 0, 120, 12)}
+    reader._zones = {"FR": ["FR"], "DE": ["DE"], "IBR": ['ES', 'PT']}
+    reader._sectors_group = {'biomass': {'biomass'},
+                             'fossil_gas': {'fossil_gas'},
+                             'RES': {'solar', 'wind'}}
 
     read_excel_mock = prod_setup["mocks"]["pandas.read_excel"]
 
@@ -294,10 +295,10 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
     # Check 'read_excel' calls
     assert read_excel_mock.call_count == 4  # One for each country called
     read_excel_mock.assert_has_calls([  # Check the parameter in each call
-        call(fake_folder_path / "Prod_FR_2015_2019.xlsx", sheet_name="Prod_FR_2015_2019", header=0),
-        call(fake_folder_path / "Prod_DE_2015_2019.xlsx", sheet_name="Prod_DE_2015_2019", header=0),
-        call(fake_folder_path / "Prod_ES_2015_2019.xlsx", sheet_name="Prod_ES_2015_2019", header=0),
-        call(fake_folder_path / "Prod_PT_2015_2019.xlsx", sheet_name="Prod_PT_2015_2019", header=0)
+        call(fake_folder_path / "Prod_FR_2015_2019.xlsx", sheet_name="Prod_FR_2015_2019"),
+        call(fake_folder_path / "Prod_DE_2015_2019.xlsx", sheet_name="Prod_DE_2015_2019"),
+        call(fake_folder_path / "Prod_ES_2015_2019.xlsx", sheet_name="Prod_ES_2015_2019"),
+        call(fake_folder_path / "Prod_PT_2015_2019.xlsx", sheet_name="Prod_PT_2015_2019")
     ], any_order=True)
 
     # Check the output of the function
@@ -447,8 +448,10 @@ def test_load_database_price_user_creates_expected_dataframe_structure(spot_setu
     fake_folder_path = spot_setup["fake directories"]["fake db dir"] / "Prix spot par an et par zone 2015-2019"
 
     reader = spot_setup['reader']
-    reader.years = [(2015, 2016, 0, 120, 0, 120, 12)]  # Get data from 2015 to 2016
-    reader.zones = {"BE": ["BE"], "DK": ["DK"], "FG": ["FR", "GE"]}
+    reader._years = [(2015, 2016)]  # Get data from 2015 to 2016
+    reader._prices_init = {"2015-2016": (0, 120, 0, 120, 12)}
+
+    reader._zones = {"BE": ["BE"], "DK": ["DK"], "FG": ["FR", "GE"]}
 
     read_excel_mock = spot_setup["mocks"]["pandas.read_excel"]
 
@@ -458,8 +461,8 @@ def test_load_database_price_user_creates_expected_dataframe_structure(spot_setu
     # Check 'read_excel' calls
     assert read_excel_mock.call_count == 2  # One for each year
     read_excel_mock.assert_has_calls([  # Check the parameter in each call
-        call(fake_folder_path / "SPOT_2015.xlsx", sheet_name="SPOT_2015", header=0, index_col=0),
-        call(fake_folder_path / "SPOT_2016.xlsx", sheet_name="SPOT_2016", header=0, index_col=0),
+        call(fake_folder_path / "SPOT_2015.xlsx", sheet_name="SPOT_2015", index_col=0),
+        call(fake_folder_path / "SPOT_2016.xlsx", sheet_name="SPOT_2016", index_col=0)
     ])
 
     # Check the output of the function
@@ -470,7 +473,7 @@ def test_load_database_price_user_creates_expected_dataframe_structure(spot_setu
         # BE, DK and FR&GE
         'BE': {
             # Only 2015 and 2016 time steps
-            Timestamp("01/01/2015  12:00:00"): np.nan,  # Value is np.nan But np.nan!=np.nan
+            Timestamp("01/01/2015  12:00:00"): np.nan,
             Timestamp("01/01/2015  13:00:00"): 35.,
             Timestamp("01/01/2015  14:00:00"): 30.,
             Timestamp("01/01/2016  12:00:00"): 30.,
@@ -565,9 +568,11 @@ def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_set
 
     reader = pmodel_setup["reader"]
 
-    reader.years = [(2015, 2016, 0, 120, 0, 120, 12)]  # Get data from 2015 to 2016
-    reader.zones = {"BE": ["BE"], "FR": ["FR"]}
-    reader.storages = {"hydro damp"}
+    reader._years = [(2015, 2016)]  # Get data from 2015 to 2016
+    reader._prices_init = {"2015-2016": (0, 120, 0, 120, 12)}
+
+    reader._zones = {"BE": ["BE"], "FR": ["FR"]}
+    reader._storages = {"hydro damp"}
 
     read_excel_mock = pmodel_setup["mocks"]["pandas.read_excel"]
     excel_file_mock = pmodel_setup["mocks"]["pandas.ExcelFile"]
@@ -578,8 +583,8 @@ def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_set
     # Assert ExcelFile and read_excel are called as expected
     assert read_excel_mock.call_count == 2
     read_excel_mock.assert_has_calls([  # Check the parameter in each call
-        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2015", header=0, index_col=0),
-        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2016", header=0, index_col=0),
+        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2015", index_col=0),
+        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2016", index_col=0),
     ])
     excel_file_mock.assert_called_once_with(fake_folder_path / "Output_prices.xlsx")
 
@@ -618,7 +623,7 @@ def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_set
 
 def test_read_price_models_error_if_consumption_for_non_storage(pmodel_setup):
     reader = pmodel_setup["reader"]
-    reader.storages = ["battery"]
+    reader._storages = ["battery"]
 
     df_invalid = pd.DataFrame({
         "Zone": ["BE"],
@@ -631,13 +636,13 @@ def test_read_price_models_error_if_consumption_for_non_storage(pmodel_setup):
 
     with patch("pandas.ExcelFile", return_value=mock_xls), \
             patch("pandas.read_excel", return_value=df_invalid):
-        with pytest.raises(ValueError, match=r"n'est pas un stockage"):
+        with pytest.raises(ValueError, match=r"is not storage"):
             reader.read_price_models()
 
 
 def test_read_price_models_raises_if_prod_min_gt_max(pmodel_setup):
     reader = pmodel_setup["reader"]
-    reader.storages = ["battery"]
+    reader._storages = ["battery"]
 
     df_invalid = pd.DataFrame({
         "Zone": ["BE", "BE"],
@@ -656,7 +661,7 @@ def test_read_price_models_raises_if_prod_min_gt_max(pmodel_setup):
 
 def test_read_price_models_raises_if_cons_max_gt_min(pmodel_setup):
     reader = pmodel_setup["reader"]
-    reader.storages = ["battery"]
+    reader._storages = ["battery"]
 
     df_invalid = pd.DataFrame({
         "Zone": ["BE", "BE"],

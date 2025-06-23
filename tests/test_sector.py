@@ -26,7 +26,7 @@ def sector_setup():
     powers_prod = pd.Series([200, 300, 300, 250, 350, 320, 400, 380, 360], index=timestamps)
     powers_cons = pd.Series([-300, -400, -450, -500, -600, -550, -520, -580, -590], index=timestamps)
 
-    # Availabilities (MW) (>= puissances)
+    # Availabilities (MW) (>= powers)
     availabilities = pd.Series([1000] * 9, index=timestamps)
 
     # Prices (€/MWh)
@@ -34,12 +34,12 @@ def sector_setup():
 
     # Sector instance in production mode
     sector_prod = Sector(sector_name="solar", historical_powers=powers_prod, is_controllable=True, is_load=False)
-    sector_prod.availabilities = availabilities
+    sector_prod._availabilities = availabilities
 
     # Sector instance in consumption mode
     sector_cons = Sector(sector_name="hydro pump storage", historical_powers=powers_cons, is_controllable=False,
                          is_load=True)
-    sector_cons.availabilities = availabilities
+    sector_cons._availabilities = availabilities
 
     return {
         "sector_prod": sector_prod,
@@ -51,20 +51,20 @@ def sector_setup():
     }
 
 
-# ------- Tests compute_utilization_ratio -------
+# ------- Tests compute_use_ratio -------
 
-def test_compute_utilization_ratio_production(sector_setup):
+def test_compute_use_ratio_production(sector_setup):
     sector = sector_setup["sector_prod"]
-    assert sector._compute_utilization_ratio(price=60, price_no_power=50, price_full_power=70) == 0.5
-    assert sector._compute_utilization_ratio(price=40, price_no_power=50, price_full_power=70) == 0
-    assert sector._compute_utilization_ratio(price=90, price_no_power=50, price_full_power=70) == 1
+    assert sector._compute_use_ratio(price=60, price_no_power=50, price_full_power=70) == 0.5
+    assert sector._compute_use_ratio(price=40, price_no_power=50, price_full_power=70) == 0
+    assert sector._compute_use_ratio(price=90, price_no_power=50, price_full_power=70) == 1
 
 
-def test_compute_utilization_ratio_consumption(sector_setup):
+def test_compute_use_ratio_consumption(sector_setup):
     sector = sector_setup["sector_cons"]
-    assert sector._compute_utilization_ratio(price=60, price_no_power=70, price_full_power=50) == -0.5
-    assert sector._compute_utilization_ratio(price=40, price_no_power=70, price_full_power=50) == -1
-    assert sector._compute_utilization_ratio(price=90, price_no_power=70, price_full_power=50) == 0
+    assert sector._compute_use_ratio(price=60, price_no_power=70, price_full_power=50) == -0.5
+    assert sector._compute_use_ratio(price=40, price_no_power=70, price_full_power=50) == -1
+    assert sector._compute_use_ratio(price=90, price_no_power=70, price_full_power=50) == 0
 
 
 # ------- Tests build_availabilities -------
@@ -106,7 +106,8 @@ def test_compute_utilization_ratio_consumption(sector_setup):
 ])
 def test_build_availabilities_parametrized(name, is_load, is_controllable, powers, expected_avail):
     sector = Sector(name, powers, is_controllable, is_load)
-    result = sector.build_availabilities()
+    sector.build_availabilities()
+    result = sector._availabilities
 
     pd.testing.assert_series_equal(result, expected_avail)
     assert len(result) == len(powers)
@@ -149,15 +150,15 @@ def test_price_model_accuracy_on_linear_relation():
     historical_prices = pd.Series(50 + normalized_powers * 50, index=idx)  # price range from 50 to 100
 
     sector = Sector("solar", historical_powers=historical_powers, is_controllable=False, is_load=False)
-    sector.availabilities = availabilities
+    sector._availabilities = availabilities
 
     # The model must find price_no_power ≈ 50 and price_full_power ≈ 100
     sector.build_price_model(historical_prices, prices_init=(0, 100, 0, 100, 10), zone_name="EU")
 
     price_no_power, price_full_power = sector.price_model
 
-    assert abs(price_no_power - 50) < 1
-    assert abs(price_full_power - 100) < 1
+    assert price_no_power == pytest.approx(50, abs=1)
+    assert price_full_power == pytest.approx(100, abs=1)
 
 
 def test_price_model_with_noise():
@@ -171,7 +172,7 @@ def test_price_model_with_noise():
     prices = pd.Series(50 + normalized_powers * 50, index=idx)  # price range from 50 to 100
 
     sector = Sector("solar", historical_powers=powers, is_load=False, is_controllable=False)
-    sector.availabilities = availabilities
+    sector._availabilities = availabilities
     sector.build_price_model(prices, prices_init=(0, 100, 0, 100, 10), zone_name="EU")
 
     price_no_power, price_full_power = sector.price_model
@@ -195,7 +196,7 @@ def test_price_model_step_behavior():
 
     # sector creation
     sector = Sector("gas", historical_powers, is_load=False, is_controllable=True)
-    sector.availabilities = availabilities
+    sector._availabilities = availabilities
 
     # price model construction
     sector.build_price_model(historical_prices, prices_init=(0, 100, 0, 100, 10), zone_name="EU")
@@ -211,12 +212,12 @@ def test_full_power_all_the_time():
     n = 50
     prices = pd.Series(np.linspace(30, 100, n), index=date_range("2015-01-01", periods=n, freq="H"))
 
-    # Power is always equal to availability (ex : Renewables) --> utilization ratio = 1 for all prices
+    # Power is always equal to availability (ex : Renewables) --> use ratio = 1 for all prices
     powers = pd.Series(1000, index=prices.index)
     availabilities = pd.Series(1000, index=prices.index)
 
     sector = Sector("RES", powers, is_load=False, is_controllable=False)
-    sector.availabilities = availabilities
+    sector._availabilities = availabilities
 
     sector.build_price_model(prices, prices_init=(0, 120, 0, 120, 10), zone_name="EU")
 
@@ -238,13 +239,13 @@ def test_plot_result_variants(tmp_path, is_load, price_model, expected_title):
     index = pd.date_range("2015-01-01", periods=5, freq="H")
     powers = pd.Series([100, 200, 150, 180, 170], index=index)
     if is_load:
-        powers = -powers  # Pour que utilization_ratio soit entre -1 et 0
+        powers = -powers  # Pour que use_ratio soit entre -1 et 0
 
     prices = pd.Series([50, 60, 55, 52, 65], index=index)
 
     name = "solar" if not is_load else "hydro"
     sector = Sector(name, powers, is_load)
-    sector.availabilities = pd.Series([200, 200, 200, 200, 200], index=index)
+    sector._availabilities = pd.Series([200, 200, 200, 200, 200], index=index)
     sector._price_model = price_model
 
     path = tmp_path / f"{name}_plot.png"

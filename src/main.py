@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.controller_new import Controller
+from src.controller import Controller
 
 # studies_dir = Path(__file__).parents[1] / "studies"
 # work_dir = studies_dir / "study_1"
