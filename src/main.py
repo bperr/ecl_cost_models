@@ -12,5 +12,4 @@ if __name__ == "__main__":
     db_dir = Path("C:/Users/a.faivre/PycharmProjects/ECl cost models/Database")
 
     controller = Controller(work_dir=work_dir, db_dir=db_dir)
-    results = controller.run(export_to_excel=True)
-    print(results)
+    controller.build_price_models()
