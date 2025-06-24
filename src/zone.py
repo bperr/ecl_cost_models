@@ -46,8 +46,6 @@ class Zone:
             :param sector_name: Name of the sector
             :param historical_powers: Power data for the sector in MW
             :param is_controllable: Indicates whether the sector is controllable
-
-            :return: None
         """
         sector = Sector(sector_name, historical_powers, is_controllable)
         sector.build_availabilities()
@@ -58,9 +56,6 @@ class Zone:
             Builds price models for all sectors in the zone
 
             :param prices_init: Tuple of bounds and step size for price search
-
-            :raise: warning if there are no prices available for this zone
-            :return: None
         """
 
         print(f"\n ==== Building price model for {self._name} ====")
@@ -93,8 +88,6 @@ class Zone:
             :param sector_name: Name of the storage unit
             :param historical_powers: Power time series of the storage (consumption and generation) in MW
             :param is_controllable: Indicates whether the storage behavior is controllable
-
-            :return: None
         """
         storage = Storage(sector_name, historical_powers, is_controllable)
         storage.load.build_availabilities()
@@ -109,8 +102,6 @@ class Zone:
             for each sector in the zone
 
             :param path: path where plots will be saved
-
-            :return: None
         """
         for sector in self.sectors:
             if sector.is_load:

@@ -148,6 +148,8 @@ def test_build_price_models(controller_setup):
             actual_call_args.kwargs["historical_prices"]
         )
 
+    assert network.build_price_models.call_count == 2
+
     network.build_price_models.assert_has_calls([
         call(controller._prices_init["2015-2015"]),
         call(controller._prices_init["2016-2016"]),
@@ -205,7 +207,6 @@ def test_export_price_models(controller_setup):
 
     def fake_to_excel(self, writer, index=False, sheet_name=None):  # to_excel mock
         written_df['df'] = self  # get df
-        return None
 
     with patch("pandas.DataFrame.to_excel", new=fake_to_excel):
         current_date = "20250618_13h02"

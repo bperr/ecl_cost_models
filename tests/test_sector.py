@@ -239,7 +239,7 @@ def test_plot_result_variants(tmp_path, is_load, price_model, expected_title):
     index = pd.date_range("2015-01-01", periods=5, freq="H")
     powers = pd.Series([100, 200, 150, 180, 170], index=index)
     if is_load:
-        powers = -powers  # Pour que use_ratio soit entre -1 et 0
+        powers = -powers  # in order to have a use_ratio between -1 et 0
 
     prices = pd.Series([50, 60, 55, 52, 65], index=index)
 

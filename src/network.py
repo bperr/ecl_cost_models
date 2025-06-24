@@ -24,15 +24,13 @@ class Network:
                  controllable_sectors: list[str], historical_prices: pd.Series):
         """
         Adds a new zone to the network with its sectors and storages, it includes all the powers data for the sectors
-        and all the prices data for the zones
+        and all the prices data for the zone
 
         :param zone_name: The name of the zone
         :param sectors_historical_powers: Historical power data for each sector (columns = sector names)
-        :param storages: list of storages
+        :param storages: List of sector names that are storages
         :param controllable_sectors: List of sector names that are controllable
         :param historical_prices: Historical prices for the zone
-
-        :return: None
         """
         zone = Zone(zone_name, historical_prices)
         self._zones.append(zone)

@@ -45,8 +45,6 @@ class Controller:
               - Initializes a Network instance and adds zones with associated data
               - Builds price models using initial prices
               - Call the method to export the resulting price models to an Excel file and saves associated plots
-
-            :return: None
         """
         create_file = True
         current_date = datetime.now().strftime("%Y%m%d_%Hh%M")
@@ -74,7 +72,7 @@ class Controller:
     def export_price_models(self, start_year: int, end_year: int, create_file: bool, current_date: str):
         """
             Export the generated price models for all zones and sectors to an Excel file and save visual plots in the
-            working directory in a file called "results YYYYMMDD_HHhMM"
+            working directory in a directory called "results YYYYMMDD_HHhMM"
 
             Each zone's model prices are structured into rows representing:
               - Maximum and minimum consumption prices (Cons_max, Cons_min)
@@ -85,7 +83,6 @@ class Controller:
             :param create_file: Whether to create a new Excel file (True) or append to an existing one
             with a new sheet (False)
             :param current_date: Timestamp string used to name the output folder for results
-            :return: None
         """
         data = []
 
@@ -100,8 +97,6 @@ class Controller:
             row_prod_min = [zone.name, "Prod_min"] + [np.nan] * len(sectors)
             row_prod_max = [zone.name, "Prod_max"] + [np.nan] * len(sectors)
 
-            follows_load = False
-
             for sector in zone.sectors:
                 prices = sector.price_model
                 idx = sector_to_index[sector.name]
@@ -109,12 +104,8 @@ class Controller:
                 if sector.is_load:
                     row_cons_min[idx + 2] = prices[0]
                     row_cons_max[idx + 2] = prices[1]
-                    follows_load = True
 
                 else:
-                    if follows_load:
-                        follows_load = False
-
                     row_prod_min[idx + 2] = prices[0]
                     row_prod_max[idx + 2] = prices[1]
 

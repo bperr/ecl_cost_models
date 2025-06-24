@@ -91,10 +91,6 @@ class Sector:
             :param historical_prices: Historical energy prices for the zone concerned
             :param prices_init: Tuple of bounds and step size for price search
             :param zone_name: Name of the zone (for warning messages and output labeling).
-
-            :raise: warning if there is no data of historical power for this sector or no historical prices for
-                the current zone
-            :return: None
         """
 
         powers_check = self._historical_powers.replace(0, pd.NA).dropna()
@@ -154,16 +150,17 @@ class Sector:
 
         # Prices initialisation
         if self.is_load:  # consumption mode
-            min_price_full_power, max_price_full_power, min_price_no_power, max_price_no_power, _ = prices_init
+            (min_price_full_power, max_price_full_power, min_price_no_power,
+             max_price_no_power, step_prices_init) = prices_init
             prices_in_order = lambda x, y: y <= x  # noqa
             label = "c"
 
         else:  # production mode
-            min_price_no_power, max_price_no_power, min_price_full_power, max_price_full_power, _ = prices_init
+            (min_price_no_power, max_price_no_power, min_price_full_power,
+             max_price_full_power, step_prices_init) = prices_init
             prices_in_order = lambda x, y: x <= y  # noqa
             label = "p"
 
-        step_prices_init = prices_init[-1]
         potential_prices_init = []
 
         # evaluate all valid combinations - defined above in prices_in_order - of (price_no_power, price_full_power)
@@ -251,8 +248,6 @@ class Sector:
             :param zone_name: Name of the zone for plot labeling.
             :param historical_prices: Historical price data.
             :param path: Path where the figure will be saved as a PNG.
-
-            :return: None
         """
 
         if self._price_model != (None, None):
@@ -268,8 +263,8 @@ class Sector:
             prices = prices.groupby(prices.index).mean()
             use_ratios = use_ratios.groupby(use_ratios.index).mean()
 
-            aligned = pd.concat([prices, use_ratios], axis=1).dropna()
-            plt.scatter(aligned.iloc[:, 0], aligned.iloc[:, 0], s=7)
+            aligned = pd.concat([prices.rename("price"), use_ratios.rename("use_ratio")], axis=1).dropna()
+            plt.scatter(aligned["price"], aligned["use_ratio"], s=7)
 
             if self.is_load:
                 model_y = [-1, -1, 0, 0]

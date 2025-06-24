@@ -85,7 +85,7 @@ class InputReader:
             - self._years =  [(2015, 2016)]
             - list(self._zones.keys()) =  ["IBR", "FRA"]
             - list(self._sectors_group.keys()) = ["Fossil", "Storage", "Nuclear"]
-            - self._storages =  [Storage]
+            - self._storages =  ["Storage"]
             - self._controllable_sectors = ["Fossil", "Nuclear"]
             - self._prices_init = {"2015-2016" : (0, 100, 0, 100, 10)}
         """
