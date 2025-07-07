@@ -96,8 +96,8 @@ Vous pouvez trouver ci-dessous le processus de paramétrage et d'utilisation de 
 Remplissage pour chaque secteur et zone géographique des prix seuils hypothèses. En effet, le fait de regrouper par zones et secteurs permet de ne remplir qu'une seule fois les hypothèses de prix pour chaque zone/secteur. L'outil Python se charge ensuite d'attribuer à chaque pays/modes de prod de chaque zone/secteur les hypothèses correspondantes.
 
 ### 3. Organisation des fichiers sur le serveur de l'outil
-- Les données de production doivent être dans un dossier *"Production par pays et par filière 2015-2019"*.
-- Les données de prix spot doivent être dans un dossier *"Prix spot par an et par zone 2015-2019"*.
+- Les données de production doivent être dans un dossier *"countries_power_production_by_sector_2015_2019"*.
+- Les données de prix spot doivent être dans un dossier *"annual_spot_prices_by_country_2015_2019"*.
   
   ➝ Ces deux dossiers doivent être dans un même dossier dont l'adresse sera à indiquer plus tard (`db_dir`).
   

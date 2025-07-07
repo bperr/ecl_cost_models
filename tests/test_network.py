@@ -47,11 +47,11 @@ def network_setup():
     patch.stopall()
 
 
-def make_sector(name, price_model, is_load):
+def make_sector(name, price_model, is_storage_load):
     mock = MagicMock()
     mock.name = name
     mock.price_model = price_model
-    mock.is_load = is_load
+    mock.is_storage_load = is_storage_load
     return mock
 
 
@@ -75,18 +75,20 @@ def test_add_zone(network_setup):
                                                       True)
 
     # Check that zone has been added to networks.zone
-    assert setup["zone"] in network._zones
+    assert setup["zone"] in network._zones.values()
 
 
 def test_build_price_models(network_setup):
     network = Network()
-    network._zones.append(network_setup["zone"])
+    zone = network_setup["zone"]
+
+    network._zones[zone.name] = zone
 
     # Calls build_price_models
     network.build_price_models((0, 100, 0, 100, 10))
 
     # Check the call of build_price_model of zone
-    network_setup["zone"].build_price_model.assert_called_once_with((0, 100, 0, 100, 10))
+    zone.build_price_model.assert_called_once_with((0, 100, 0, 100, 10))
 
 
 def test_build_price_models_raises_when_no_zones():
@@ -95,36 +97,60 @@ def test_build_price_models_raises_when_no_zones():
         network.build_price_models((0, 100, 0, 100, 10))
 
 
-def test_check_price_models_valid(network_setup):
-    network = Network()
-    zone = network_setup["zone"]
+def test_check_price_models_valid():
+    price_models = {
+        "FR": {
+            "solar": [None, None, 50, 100],  # Non-storage sector with valid production prices
+            # Storage sector with valid consumption prices (cons_full <= cons_none & cons_none <= prod_none)
+            "battery": [10, 20, 40, 50]
+        }
+    }
 
-    sector_1 = make_sector("solar", (50, 100), False)  # p0 <= p100
-    sector_2 = make_sector("battery", (20, 10), True)  # c0 >= c100
-
-    zone.sectors = [sector_1, sector_2]
-    network._zones = [zone]
+    storages = ["battery"]
 
     # Should not raise
-    network.check_price_models()
+    Network.check_price_models(price_models, storages)
 
 
-@pytest.mark.parametrize("name, price_model, is_load, expected_error", [
-    ("solar", [], False, "Prices values are missing for solar"),
-    ("solar", (100, 90), False, "Production price p0 must be lower than p100"),
-    ("battery", (20, 30), True, "Consumption price c100 must be lower than c0"),
+@pytest.mark.parametrize("zone, sector, prices, storages, expected_error", [
+    # Not None cons prices for solar sector (not storage)
+    ("FR", "solar", [20, 30, 50, 60], [], "Sector 'solar' in zone 'FR' is not storage but has consumption prices"),
+    # Production price p0 > p100
+    ("FR", "solar", [None, None, 100, 90], [], "Logical error: Prod_none > Prod_full for 'solar' in zone 'FR'"),
+    # Consumption price c100 > c0
+    ("FR", "battery", [30, 20, 50, 60], ["battery"],
+     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'")
 ])
-def test_check_price_models_raises_errors(network_setup, name, price_model, is_load, expected_error):
-    network = Network()
-    zone = network_setup["zone"]
-
-    bad_sector = MagicMock()
-    bad_sector.name = name
-    bad_sector.price_model = price_model
-    bad_sector.is_load = is_load
-
-    zone.sectors = [bad_sector]
-    network._zones = [zone]
+def test_check_price_models_raises_errors(zone, sector, prices, storages, expected_error):
+    price_models = {
+        zone: {
+            sector: prices
+        }
+    }
 
     with pytest.raises(ValueError, match=expected_error):
-        network.check_price_models()
+        Network.check_price_models(price_models, storages)
+
+
+def test_set_price_model(network_setup):
+    # Network object creation
+    network = Network()
+    network._zones = {"FR": network_setup["zone"]}
+
+    # Mock price models to set
+    price_models = {
+        "FR": {
+            "solar": [None, None, 10, 40],
+            "hydro pump storage": [0, 20, 30, 70]
+        }
+    }
+
+    # Call the tested method
+    network.set_price_model(price_models)
+
+    # Check that the zone's set_price_model has been called with the correct parameters
+    network_setup["zone"].set_price_model.assert_called_once_with(price_models["FR"])
+
+
+def test_run_opf():
+    pass

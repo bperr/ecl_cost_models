@@ -16,22 +16,24 @@ class Sector:
         and builds a price model based on historical energy prices and power usage.
     """
 
-    def __init__(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, is_load: bool = False):
+    def __init__(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool,
+                 is_storage_load: bool = False):
         """
             Initializes a new Sector instance.
             :param sector_name: Name of the sector.
             :param historical_powers: Historical power consumption (negative) or production (positive) in MW
             :param is_controllable: Whether the sector's power usage is controllable.
-            :param is_load: Whether the sector is a consumer (True) or producer (False).
+            :param is_storage_load: Whether the sector is a consumer (True) or producer (False).
         """
         self._name: str = sector_name
         self._historical_powers: pd.Series = historical_powers  # in MW
 
         self._price_model = tuple()  # (price_no_power, price_full_power) in €/MWh
         self._is_controllable = is_controllable
-        self._is_load = is_load
+        self._is_storage_load = is_storage_load
 
-        self._powers_out = pd.Series()  # in MW
+        self._current_power = 0
+        self._simulated_powers = pd.Series()  # in MW
         self._availabilities = pd.Series()  # in MW
 
     @property
@@ -40,9 +42,24 @@ class Sector:
         return self._name
 
     @property
-    def is_load(self):
+    def is_storage_load(self):
         """Returns True if the sector is a consumer (load), otherwise False."""
-        return self._is_load
+        return self._is_storage_load
+
+    @property
+    def historical_powers(self):
+        """Returns the sector historical power time series"""
+        return self._historical_powers
+
+    @property
+    def simulated_powers(self):
+        """Returns the sector historical power time series"""
+        return self._simulated_powers
+
+    @property
+    def price_model(self):
+        """Returns the estimated price model as a tuple (price_no_power, price_full_power)."""
+        return self._price_model
 
     def _compute_use_ratio(self, price: float, price_no_power: float, price_full_power: float):
         """
@@ -57,12 +74,12 @@ class Sector:
         """
 
         if price_no_power == price_full_power:
-            if self.is_load:
+            if self.is_storage_load:
                 return -1 if price <= price_no_power else 0
             else:
                 return 1 if price >= price_no_power else 0
 
-        if self.is_load:
+        if self.is_storage_load:
             if price >= price_no_power:
                 return 0
             if price <= price_full_power:
@@ -143,13 +160,13 @@ class Sector:
             return total_error
 
         # Definition of constraints
-        if self.is_load:
+        if self.is_storage_load:
             constraints = {'type': "ineq", 'fun': lambda x: x[0] - x[1]}  # max_price-min_price must be positive
         else:
             constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]}  # max_price-min_price must be positive
 
         # Prices initialisation
-        if self.is_load:  # consumption mode
+        if self.is_storage_load:  # consumption mode
             (min_price_full_power, max_price_full_power, min_price_no_power,
              max_price_no_power, step_prices_init) = prices_init
             prices_in_order = lambda x, y: y <= x  # noqa
@@ -183,6 +200,15 @@ class Sector:
                        options={'disp': True}, constraints=constraints)
 
         self._price_model = round(float(res.x[0]), 0), round(float(res.x[1]), 0)
+
+    def set_price_model(self, price_model: tuple):
+        """
+            Assign a price model to the sector
+
+            :param price_model: Dictionary of price model of the sector. Expected format:
+                price_model = [cons_full, cons_none, prod_none, prod_full]
+        """
+        self._price_model = price_model
 
     def build_availabilities(self):
         """
@@ -226,7 +252,7 @@ class Sector:
         else:
             # fossil & storage : availability is supposed to be the maximum power called during the year
             if self._is_controllable:
-                if self.is_load:
+                if self.is_storage_load:
                     power_rating = self._historical_powers.min()
                 else:
                     power_rating = self._historical_powers.max()
@@ -235,11 +261,6 @@ class Sector:
                                                  index=self._historical_powers.index)
             else:  # Renewable : produced power is supposed to be equal to the available power at any time
                 self._availabilities = self._historical_powers
-
-    @property
-    def price_model(self):
-        """Returns the estimated price model as a tuple (price_no_power, price_full_power)."""
-        return self._price_model
 
     def plot_result(self, zone_name: str, historical_prices: pd.Series, path: Path):
         """
@@ -266,7 +287,7 @@ class Sector:
             aligned = pd.concat([prices.rename("price"), use_ratios.rename("use_ratio")], axis=1).dropna()
             plt.scatter(aligned["price"], aligned["use_ratio"], s=7)
 
-            if self.is_load:
+            if self.is_storage_load:
                 model_y = [-1, -1, 0, 0]
                 price_min = self._price_model[1]  # consumption_price_full_power
                 price_max = self._price_model[0]  # consumption_price_no_power
@@ -287,3 +308,14 @@ class Sector:
             fig.suptitle(title, fontsize=10)
             plt.savefig(path)
             plt.close()
+
+    def update_simulated_powers(self, timestep: pd.Timestamp):
+        """
+            Updates the simulated powers series (produced by the sector) by storing the current power stored in
+            self._current_power and calculated during the OPF at the specified timestep and then resets the current
+            power to zero (so that the next timesteps data can be saved)
+
+            :param timestep: The timestep at which the current power should be recorded
+        """
+        self._simulated_powers[timestep] = self._current_power
+        self._current_power = 0
