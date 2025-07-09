@@ -7,6 +7,7 @@ from pandas import Timestamp
 from pandas.testing import assert_series_equal
 
 from src.controller import Controller
+from src.controller import SIMULATED_POWERS_DIRECTORY_ROOT, SIMULATED_POWERS_FILE_ROOT
 from src.zone import Zone
 
 
@@ -469,19 +470,22 @@ def test_export_opfs(controller_opf_setup):
     zone_mock_ibr.sectors = [sector_mock]
     controller._network.zones = {"IBR": zone_mock_ibr}
 
-    with patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock:
+    with patch('pathlib.Path.exists', return_value=True), \
+            patch('pathlib.Path.mkdir'), \
+            patch('pandas.ExcelWriter') as excel_writer_mock, \
+            patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock:
         controller.export_opfs()
 
-    # get the arguments
-    args, kwargs = to_excel_mock.call_args
+    # Checks that ExcelWriter has been called up with the correct file
+    expected_folder = fake_work_dir / f"{SIMULATED_POWERS_DIRECTORY_ROOT}_2015-2016"
+    expected_file = expected_folder / f"{SIMULATED_POWERS_FILE_ROOT}_IBR.xlsx"
 
-    # args[0] is the DataFrame
-    written_df = args[0]
-    sheet_name = kwargs.get('sheet_name')
-    index_flag = kwargs.get('index')
+    excel_writer_mock.assert_called_once_with(expected_file)
 
-    assert sheet_name == "2015-2016"
-    assert index_flag is False
+    to_excel_mock.assert_called_once_with(ANY, ANY, sheet_name="2015-2016", index=False)
+
+    # get the dataframe
+    written_df = to_excel_mock.call_args[0][0]
 
     # Compare the complete DataFrame
     expected_df = pd.DataFrame({

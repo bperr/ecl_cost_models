@@ -7,6 +7,8 @@ import pytest
 from pandas import Timestamp
 
 from src.input_reader import InputReader
+from src.input_reader import MAP_TO_ALPHA2_FILE_NAME
+from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME, INTERCO_POWERS_FILE_NAME
 
 
 def set_parse_side_effect(dataframes: dict[str, pd.DataFrame], mocks: dict):
@@ -704,7 +706,6 @@ def test_map_full_name_to_alpha2_code(setup):
     db_dir = setup["data"]["fake directories"]["fake db dir"]
     work_dir = setup["data"]["fake directories"]["fake work dir"]
     input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
-    from src.input_reader import MAP_TO_ALPHA2_FILE_NAME
 
     # Call the method
     with patch('src.input_reader.pd.read_excel', return_value=mock_df) as mock_read_excel:
@@ -750,7 +751,6 @@ def test_read_interco_power_ratings(setup):
                                ])
 
     # -- Check calls to mocks -- #
-    from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME
     read_excel_mock.assert_called_once_with(db_dir / INTERCO_FOLDER_NAME / INTERCO_POWER_RATINGS_FILE_NAME)
 
     map_full_name_mock.assert_called_once()
@@ -799,8 +799,6 @@ def test_read_interco_powers(setup):
         "Power (MW)": [120, 50, 10]
     }).sort_values("Time")
 
-    INTERCO_FOLDER_NAME = "interconnections_power_ratings_and_powers_2015_2019"
-    INTERCO_POWERS_FILE_NAME = "interconnections_powers_transferred_2015_2019.xlsx"
     fake_file_path_data = db_dir / INTERCO_FOLDER_NAME / INTERCO_POWERS_FILE_NAME
     excel_file_mock.assert_called_once_with(fake_file_path_data)
 

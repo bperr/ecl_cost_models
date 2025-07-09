@@ -1,3 +1,10 @@
+from __future__ import annotations  # Postpones annotation checking
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # False at runtime
+    from zone import Zone  # Import zone only during type checking, not at runtime
+
 import pandas as pd
 
 
@@ -17,7 +24,7 @@ class Interconnection:
         _simulated_powers (pd Series): stores outgoing power values (in MW) by time step.
     """
 
-    def __init__(self, zone_from, zone_to, power_rating: float, historical_power_flows: pd.Series):
+    def __init__(self, zone_from: Zone, zone_to: Zone, power_rating: float, historical_power_flows: pd.Series):
         self._zone_from = zone_from  # Zone object
         self._zone_to = zone_to  # Zone_object
         self._power_rating = power_rating  # MW

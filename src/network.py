@@ -74,7 +74,8 @@ class Network:
         """
         Adds an interconnection between two zones
 
-        :param zone_from: Zone object representing the "exporting" zone (algebraic data)
+        :param zone_from: Zone object representing the "exporting" zone
+            (power data with sign + when zone_from is exporting and sign - when zone_from is importing)
         :param zone_to: Zone object representing the "importing" zone
         :param interco_power_rating: The interconnection power rating between the two zones
         :param historical_power_flows: pd.Series containing historical power flows between the two zones per hour
