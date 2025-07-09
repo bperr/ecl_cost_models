@@ -9,21 +9,21 @@ from scipy.optimize import minimize
 
 class Sector:
     """
-        Represents an energy producing sector (among main sectors defined in the User Inputs) within a zone, some
-        sectors are also "consuming" power (storages that store energy).
+    Represents an energy producing sector (among main sectors defined in the User Inputs) within a zone, some
+    sectors are also "consuming" power (storages that store energy).
 
-        This class handles the historical power data of the sector, models its availability,
-        and builds a price model based on historical energy prices and power usage.
+    This class handles the historical power data of the sector, models its availability,
+    and builds a price model based on historical energy prices and power usage.
     """
 
     def __init__(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool,
                  is_storage_load: bool = False):
         """
-            Initializes a new Sector instance.
-            :param sector_name: Name of the sector.
-            :param historical_powers: Historical power consumption (negative) or production (positive) in MW
-            :param is_controllable: Whether the sector's power usage is controllable.
-            :param is_storage_load: Whether the sector is a consumer (True) or producer (False).
+        Initializes a new Sector instance.
+        :param sector_name: Name of the sector.
+        :param historical_powers: Historical power consumption (negative) or production (positive) in MW
+        :param is_controllable: Whether the sector's power usage is controllable.
+        :param is_storage_load: Whether the sector is a consumer (True) or producer (False).
         """
         self._name: str = sector_name
         self._historical_powers: pd.Series = historical_powers  # in MW
@@ -94,20 +94,20 @@ class Sector:
 
     def build_price_model(self, historical_prices: pd.Series, prices_init: tuple, zone_name: str):
         """
-            Builds a price model based on historical prices and power use.
-            Updates the attribute _price_model = (price_no_power, price_full_power)
-            These prices are set as (None,None) if there is no data available for the zone or sector
+        Builds a price model based on historical prices and power use.
+        Updates the attribute _price_model = (price_no_power, price_full_power)
+        These prices are set as (None,None) if there is no data available for the zone or sector
 
-            The model is optimized to minimize the difference between real and modelled mean and standard deviation
-            of the use ratio. Use ratio is calculated as historical_power / availability at each time step
-            (not considered when there is no available power)
+        The model is optimized to minimize the difference between real and modelled mean and standard deviation
+        of the use ratio. Use ratio is calculated as historical_power / availability at each time step
+        (not considered when there is no available power)
 
-            The initialisation of the prices is made by finding the minimum loss with the
-            initialisation bounds and step (prices_init).
+        The initialisation of the prices is made by finding the minimum loss with the
+        initialisation bounds and step (prices_init).
 
-            :param historical_prices: Historical energy prices for the zone concerned
-            :param prices_init: Tuple of bounds and step size for price search
-            :param zone_name: Name of the zone (for warning messages and output labeling).
+        :param historical_prices: Historical energy prices for the zone concerned
+        :param prices_init: Tuple of bounds and step size for price search
+        :param zone_name: Name of the zone (for warning messages and output labeling).
         """
 
         powers_check = self._historical_powers.replace(0, pd.NA).dropna()
@@ -201,25 +201,26 @@ class Sector:
 
         self._price_model = round(float(res.x[0]), 0), round(float(res.x[1]), 0)
 
-    def set_price_model(self, price_model: tuple):
+    def set_price_model(self, price_model: tuple[float, float]):
         """
-            Assign a price model to the sector
+        Assign a price model to the sector
 
-            :param price_model: Dictionary of price model of the sector. Expected format:
-                price_model = [cons_full, cons_none, prod_none, prod_full]
+        :param price_model: Dictionary of price model of the sector. Expected format:
+            price_model = [cons_none, cons_full] if sector is load
+            price_model = [prod_none, prod_full] if sector is not load
         """
         self._price_model = price_model
 
     def build_availabilities(self):
         """
-            Builds the availability series for the sector based on historical power data.
+        Builds the availability series for the sector based on historical power data.
 
-            - For nuclear, availability is the max of ±2 weeks window.
-            - For controllable fossil/storage, it's a fixed power rating.
-            - For renewables, it's equal to the historical production at each time.
+        - For nuclear, availability is the max of ±2 weeks window.
+        - For controllable fossil/storage, it's a fixed power rating.
+        - For renewables, it's equal to the historical production at each time.
 
-            :return:
-                pd.Series: Availability time series.
+        :return:
+            pd.Series: Availability time series.
         """
         expected_nuclear_sector_name = "nuclear"
         half_window_days = 15
@@ -264,11 +265,11 @@ class Sector:
 
     def plot_result(self, zone_name: str, historical_prices: pd.Series, path: Path):
         """
-            Plots the historical use ratios vs. price and the resulting piecewise linear model.
+        Plots the historical use ratios vs. price and the resulting piecewise linear model.
 
-            :param zone_name: Name of the zone for plot labeling.
-            :param historical_prices: Historical price data.
-            :param path: Path where the figure will be saved as a PNG.
+        :param zone_name: Name of the zone for plot labeling.
+        :param historical_prices: Historical price data.
+        :param path: Path where the figure will be saved as a PNG.
         """
 
         if self._price_model != (None, None):
@@ -309,13 +310,13 @@ class Sector:
             plt.savefig(path)
             plt.close()
 
-    def update_simulated_powers(self, timestep: pd.Timestamp):
+    def store_simulated_power(self, timestep: pd.Timestamp):
         """
-            Updates the simulated powers series (produced by the sector) by storing the current power stored in
-            self._current_power and calculated during the OPF at the specified timestep and then resets the current
-            power to zero (so that the next timesteps data can be saved)
+        Updates the simulated powers series (produced by the sector) by storing the current power stored in
+        self._current_power and calculated during the OPF at the specified timestep and then resets the current
+        power to zero (so that the next timesteps data can be saved)
 
-            :param timestep: The timestep at which the current power should be recorded
+        :param timestep: The timestep at which the current power should be recorded
         """
         self._simulated_powers[timestep] = self._current_power
         self._current_power = 0

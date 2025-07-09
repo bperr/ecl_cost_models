@@ -14,32 +14,32 @@ INTERCO_POWERS_FILE_NAME = "interconnections_powers_transferred_2015_2019.xlsx"
 
 class InputReader:
     """
-        A utility class to load, validate, and organize input data for energy price modelling
+    A utility class to load, validate, and organize input data for energy price modelling
 
-        This class centralizes all logic related to:
-        - Reading user-defined configurations (zones, sector groups, storage types, etc.)
-        - Loading historical production and price data from a structured database
-        - Structuring the data for downstream modeling tasks
+    This class centralizes all logic related to:
+    - Reading user-defined configurations (zones, sector groups, storage types, etc.)
+    - Loading historical production and price data from a structured database
+    - Structuring the data for downstream modeling tasks
 
-        It handles consistency checks, grouping, and formatting of data, providing the
-        rest of the application with ready-to-use, clean input structures.
+    It handles consistency checks, grouping, and formatting of data, providing the
+    rest of the application with ready-to-use, clean input structures.
     """
 
     def __init__(self, work_dir: Path, db_dir: Path):
         """
-            Initializes the InputReader instance by setting the working and database directories.
+        Initializes the InputReader instance by setting the working and database directories.
 
 
-            :param work_dir: Path to the working directory where user-defined Excel file 'User_inputs.xlsx' is stored.
-            :param db_dir: Path to the database directory containing historical production and price data organized by
-                country and year.
+        :param work_dir: Path to the working directory where user-defined Excel file 'User_inputs.xlsx' is stored.
+        :param db_dir: Path to the database directory containing historical production and price data organized by
+            country and year.
 
-            The constructor does not load any data immediately. Data is loaded and processed
-            only when the corresponding methods (`read_user_inputs`, `read_db_powers`, etc.) are called.
+        The constructor does not load any data immediately. Data is loaded and processed
+        only when the corresponding methods (`read_user_inputs`, `read_db_powers`, etc.) are called.
 
-            Internal attributes are initialized to store:
-            - User-defined configurations (zones, sector groups, storage sectors, etc.)
-            - Historical power and price data
+        Internal attributes are initialized to store:
+        - User-defined configurations (zones, sector groups, storage sectors, etc.)
+        - Historical power and price data
         """
 
         self._work_dir: Path = work_dir
@@ -328,7 +328,8 @@ class InputReader:
 
     def read_price_models(self) -> dict:
         """
-        Reads computed price results from 'Output_prices.xlsx' and reconstructs a nested dictionary.
+        Reads computed price results from 'Output_prices.xlsx' of the folder named "results" or the last created results
+        folder and reconstructs a nested dictionary.
 
         The results dictionary has the following structure:
         results[year][zone][sector] = [cons_full, cons_none, prod_none, prod_full]
@@ -346,7 +347,7 @@ class InputReader:
         """
         results = {}
 
-        # uses the file "results" if it exists and the last created file starting with "results" if not
+        # uses the folder "results" if it exists and the last created folder starting with "results" if not
         exact_results = self._work_dir / "results"
 
         if exact_results.exists() and exact_results.is_dir():
@@ -442,14 +443,14 @@ class InputReader:
 
     def read_interco_power_ratings(self):
         """
-            Loads and transforms interconnection power ratings data between zones from source file.
-            - Each interconnection capacity between two countries is assumed to be bidirectional
-            (same in both directions).
-            - Intra-zone connections (between countries in the same zone) are excluded.
-            - The total capacity between two zones is computed as the sum of all interconnections between
-            their respective countries
+        Loads and transforms interconnection power ratings data between zones from source file.
+        - Each interconnection capacity between two countries is assumed to be bidirectional
+        (same in both directions).
+        - Intra-zone connections (between countries in the same zone) are excluded.
+        - The total capacity between two zones is computed as the sum of all interconnections between
+        their respective countries
 
-            :return: DataFrame with columns "zone_from", "zone_to" and "Capacity (MW)".
+        :return: DataFrame with columns "zone_from", "zone_to" and "Capacity (MW)".
             """
         # Load data
         df_interco_capacity_raw = pd.read_excel(self._db_dir / INTERCO_FOLDER_NAME / INTERCO_POWER_RATINGS_FILE_NAME)
@@ -482,8 +483,8 @@ class InputReader:
         df_final["zone_to"] = df_final["country_to"].map(country_to_zone)
 
         # Identify unmapped countries
-        unknown_countries_from = df_final[df_final["zone_from"].isna()]["country_from"].unique()
-        unknown_countries_to = df_final[df_final["zone_to"].isna()]["country_to"].unique()
+        unknown_countries_from = df_final[df_final["zone_from"].isna()]["country_from"]
+        unknown_countries_to = df_final[df_final["zone_to"].isna()]["country_to"]
         unknown_countries = set(unknown_countries_from).union(set(unknown_countries_to))
 
         if unknown_countries:
@@ -494,7 +495,7 @@ class InputReader:
         df_final = df_final[df_final["zone_from"] != df_final["zone_to"]]  # Remove intra-zone flows
 
         # Identify countries with no interconnection data
-        countries_in_data = set(df_final["country_from"].unique()).union(set(df_final["country_to"].unique()))
+        countries_in_data = set(df_final["country_from"]).union(set(df_final["country_to"]))
         countries_in_zones = set(country_to_zone.keys())
         missing_countries = countries_in_zones - countries_in_data
 
@@ -503,24 +504,19 @@ class InputReader:
                 f"The following countries are defined in zones but have no interconnection data: {missing_countries}")
 
         # Aggregate capacities by zone pairs
-        df_grouped = df_final.groupby(["zone_from", "zone_to"], as_index=False)["Capacity (MW)"].sum()
-        self._interco_power_ratings = df_grouped
-
-        if missing_countries:
-            warnings.warn(
-                f"The following countries are defined in zones but have no interconnection data: {missing_countries}")
+        self._interco_power_ratings = df_final.groupby(["zone_from", "zone_to"], as_index=False)["Capacity (MW)"].sum()
 
         return self._interco_power_ratings
 
     def read_interco_powers(self):
         """
-            Loads, cleans, and aggregates interconnection power flow data for a given year from the source file.
-            - Only non-zero power flows are retained.
-            - Intra-zone flows (exchanges within the same zone) are excluded.
-            - Power flows are aggregated by timestamp and zone pairs.
+        Loads, cleans, and aggregates interconnection power flow data for a given year from the source file.
+        - Only non-zero power flows are retained.
+        - Intra-zone flows (exchanges within the same zone) are excluded.
+        - Power flows are aggregated by timestamp and zone pairs.
 
-            :return: DataFrame with columns "Time", "Power (MW)", "zone_from", and "zone_to".
-            """
+        :return: DataFrame with columns "Time", "Power (MW)", "zone_from", and "zone_to".
+        """
 
         # Verify if the sheet exists
         file_path_data = self._db_dir / INTERCO_FOLDER_NAME / INTERCO_POWERS_FILE_NAME
@@ -532,10 +528,13 @@ class InputReader:
             # Load data from the specified sheet
             df_interco_raw = pd.read_excel(file_path_data, sheet_name=sheet_name)
 
-            # Reshape data to good format
+            # --- Reshape data to good format ---
+            # Transform the dataframe into a 3 columns dataframe: "Time", "direction" and "Power (MW)"
             reshaped_df = df_interco_raw.set_index("Time").stack().reset_index(name="Power (MW)").rename(
                 columns={'level_1': 'direction'})
+            # Creates two columns "source" and "target" by splitting column "direction"
             reshaped_df[["country_from", "country_to"]] = reshaped_df["direction"].str.split(" --> ", n=1, expand=True)
+            # Remove column direction
             reshaped_df.drop(columns="direction", inplace=True)
             df_interco = reshaped_df[reshaped_df["Power (MW)"] != 0]  # Avoid interco with 0 Power exchanged
 

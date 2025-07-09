@@ -3,7 +3,7 @@ import pandas as pd
 from src.interconnection import Interconnection
 
 
-def test_update_simulated_powers():
+def test_store_simulated_power():
     # fake data
     interconnection = Interconnection('FR', 'ES', 200, pd.Series())
     timestep = pd.Timestamp("2015-01-01 12:00:00")
@@ -11,7 +11,7 @@ def test_update_simulated_powers():
     interconnection._current_power = 150
 
     # tested method
-    interconnection.update_simulated_powers(timestep)
+    interconnection.store_simulated_power(timestep)
 
     # Verifications
     expected_series = pd.Series([150], index=[timestep])

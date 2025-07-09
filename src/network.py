@@ -6,10 +6,10 @@ from src.zone import Zone
 
 class Network:
     """
-        Represents an energy network composed of zones (themselves composed of sectors) and interconnections.
+    Represents an energy network composed of zones (themselves composed of sectors) and interconnections.
 
-        This class manages the structure of the network by adding all the required zones and sectors
-        (including storages) and interconnections, and includes tools to build and validate price and power models.
+    This class manages the structure of the network by adding all the required zones and sectors
+    (including storages) and interconnections, and includes tools to build and validate price and power models.
     """
 
     def __init__(self):
@@ -44,6 +44,8 @@ class Network:
         zone = Zone(zone_name, historical_prices)
         self._zones[zone_name] = zone
 
+        # update the attribute datetime_index with the timesteps (indexes) of the first zone's historical power data
+        # these timesteps are then used as timesteps for the opfs
         if self._datetime_index is None:
             self._datetime_index = sectors_historical_powers.index
         else:
@@ -70,17 +72,17 @@ class Network:
     def add_interconnection(self, zone_from: Zone, zone_to: Zone, interco_power_rating: float,
                             historical_power_flows: pd.Series):
         """
-            Adds an interconnection between two zones
+        Adds an interconnection between two zones
 
-            :param zone_from: The name of the zone "from"
-            :param zone_to: The name of the zone "to"
-            :param interco_power_rating: The interconnection power rating between the two zones
-            :param historical_power_flows: pd.Series containing historical power flows between the two zones per hour
-            (positive when power is transferred from zone "from" to zone "to" and negative if power is transferred in
-            the opposite direction)
+        :param zone_from: Zone object representing the "exporting" zone (algebraic data)
+        :param zone_to: Zone object representing the "importing" zone
+        :param interco_power_rating: The interconnection power rating between the two zones
+        :param historical_power_flows: pd.Series containing historical power flows between the two zones per hour
+        (positive when power is transferred from zone "from" to zone "to" and negative if power is transferred in
+        the opposite direction)
 
-            Note:
-                Method currently not implemented (will be for OPF).
+        Note:
+            Method currently not implemented (will be for OPF).
         """
         interconnection = Interconnection(zone_from, zone_to, interco_power_rating, historical_power_flows)
         self._interconnections.append(interconnection)
@@ -91,12 +93,12 @@ class Network:
 
     def build_price_models(self, prices_init: tuple):
         """
-            Builds price models for all sectors of all the zones in the network.
+        Builds price models for all sectors of all the zones in the network.
 
-            :param prices_init: Prices boundaries to make the initialisation of prices
+        :param prices_init: Prices boundaries to make the initialisation of prices
 
-            :raise:
-                ValueError: If no zones have been added to the network.
+        :raise:
+            ValueError: If no zones have been added to the network.
         """
 
         if len(self._zones) == 0:
@@ -118,73 +120,76 @@ class Network:
     @staticmethod
     def check_price_models(price_models: dict, storages: list[str]):
         """
-            Validates the integrity and logical consistency of the price models for each sector in all zones.
+        Validates the integrity and logical consistency of the price models for each sector in all zones.
 
-            The price_models dictionary should have the following structure:
-            price_models[zone][sector] = [cons_full, cons_none, prod_none, prod_full]
+        The price_models dictionary should have the following structure:
+        price_models[zone][sector] = [cons_full, cons_none, prod_none, prod_full]
 
-            Validation rules:
-            - Sectors that are not storage units must not have consumption prices.
-            - For all sectors: prod_none must be less than or equal to prod_full
-            - For all sectors: cons_full must be less than or equal to cons_none
-            - For all sectors: cons_none must be less than or equal to prod_none
+        Validation rules:
+        - Sectors that are not storage units must not have consumption prices
+            (i.e. cons_full and cons_none must be None)
+        - Production prices (prod_none and prod_full) must not be None
+        - prod_none must be less than or equal to prod_full
+        - For storage sectors only:
+            - Consumption prices (cons_full and cons_none) must not be None
+            - cons_full must be less than or equal to cons_none
+            - cons_none must be less than or equal to prod_none
 
-            :param price_models: Dictionary containing the price models per zone and sector
-            :param storages: List of sector names that are storages
+        :param price_models: Dictionary containing the price models per zone and sector
+        :param storages: List of sector names that are storages
 
-            :raises ValueError: If any of the logical consistency checks fail
-    """
+        :raises ValueError: If any of the logical consistency checks fail
+        """
 
         for zone, sectors in price_models.items():
             for sector, prices in sectors.items():
                 cons_full, cons_none, prod_none, prod_full = prices
 
-                # If sector is not storage, it should not have consumption prices
-                if sector not in storages:
-                    if any(p is not None for p in [cons_full, cons_none]):
-                        raise ValueError(
-                            f"Sector '{sector}' in zone '{zone}' is not storage but has consumption prices."
-                        )
-
-                # Check prod_none <= prod_full
-                if prod_none is not None and prod_full is not None:
-                    if prod_none > prod_full:
-                        raise ValueError(
+                # Check production prices
+                if prod_none is None or prod_full is None:
+                    raise ValueError(f"Missing production prices for '{sector}' in zone '{zone}'")
+                if prod_none > prod_full:
+                    raise ValueError(
                             f"Logical error: Prod_none > Prod_full for '{sector}' in zone '{zone}' "
                             f"({prod_none} > {prod_full})"
                         )
 
-                # Check cons_full <= cons_none
-                if cons_full is not None and cons_none is not None:
+                if sector in storages:
+                    # Check consumption prices
+                    if cons_none is None or cons_full is None:
+                        raise ValueError(f"Missing consumption prices for storage sector '{sector}' in zone '{zone}'")
                     if cons_full > cons_none:
                         raise ValueError(
                             f"Logical error: Cons_full > Cons_none for '{sector}' in zone '{zone}' "
                             f"({cons_full} > {cons_none})"
                         )
-
-                # Check cons_none <= prod_none
-                if cons_none is not None and prod_none is not None:
                     if cons_none > prod_none:
                         raise ValueError(
-                            f"Consumption price no power (c0 = {cons_none}) must be lower than "
-                            f"production price no power (p0 = {prod_none}) for '{sector}' in zone '{zone}'."
+                            f"Logical error: Cons_none > Prod_none for '{sector}' in zone '{zone}' "
+                            f"({cons_none} > {prod_none})"
+                        )
+                else:
+                    # If sector is not storage, it should not have consumption prices
+                    if cons_full is not None or cons_none is not None:
+                        raise ValueError(
+                            f"Sector '{sector}' in zone '{zone}' is not storage but has consumption prices."
                         )
 
     def check_power_models(self):
         """
-            Validates power models for each sector or interconnection
+        Validates power models for each sector or interconnection
 
-            Note:
-                Method currently not implemented (will be for OPF).
+        Note:
+            Method currently not implemented (will be for OPF).
         """
         pass
 
     def run_opf(self, timestep: pd.Timestamp):
         """
-            Runs the Optimal Power Flow (OPF) algorithm on the network
+        Runs the Optimal Power Flow (OPF) algorithm on the network
 
-            Note:
-                Method currently not implemented
+        Note:
+            Method currently not implemented
         """
         # converged = False
         n_full_iter = 100
@@ -197,7 +202,7 @@ class Network:
                     # converged = False
 
         for zone in self.zones.values():
-            zone.update_simulated_powers(timestep)
+            zone.store_simulated_power(timestep)
 
         # Update each sector._simulated_powers
         # Update each interconnection._simulated_powers

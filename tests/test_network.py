@@ -119,7 +119,20 @@ def test_check_price_models_valid():
     ("FR", "solar", [None, None, 100, 90], [], "Logical error: Prod_none > Prod_full for 'solar' in zone 'FR'"),
     # Consumption price c100 > c0
     ("FR", "battery", [30, 20, 50, 60], ["battery"],
-     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'")
+     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'"),
+    # prod_none is None
+    ("FR", "solar", [None, None, None, 100], [], "Missing production prices for 'solar' in zone 'FR"),
+    # prod_full is None
+    ("FR", "solar", [None, None, 10, None], [], "Missing production prices for 'solar' in zone 'FR"),
+    # Storage: cons_full is None
+    ("FR", "battery", [None, 40, 10, 20], ["battery"],
+     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+    # Storage: cons_none is None
+    ("FR", "battery", [30, None, 10, 20], ["battery"],
+     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+    # Storage: cons_none > prod_none
+    ("FR", "battery", [30, 50, 40, 60], ["battery"],
+     r"Logical error: Cons_none > Prod_none for 'battery' in zone 'FR' \(50 > 40\)")
 ])
 def test_check_price_models_raises_errors(zone, sector, prices, storages, expected_error):
     price_models = {

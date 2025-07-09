@@ -704,8 +704,7 @@ def test_map_full_name_to_alpha2_code(setup):
     db_dir = setup["data"]["fake directories"]["fake db dir"]
     work_dir = setup["data"]["fake directories"]["fake work dir"]
     input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
-    global MAP_TO_ALPHA2_FILE_NAME
-    MAP_TO_ALPHA2_FILE_NAME = 'eu_countries_alpha2_codes.xlsx'
+    from src.input_reader import MAP_TO_ALPHA2_FILE_NAME
 
     # Call the method
     with patch('src.input_reader.pd.read_excel', return_value=mock_df) as mock_read_excel:
@@ -743,9 +742,6 @@ def test_read_interco_power_ratings(setup):
     # Run the function
     interconnection_capacities_df = input_reader.read_interco_power_ratings()
 
-    # Manually inject the result as expected input for the second part
-    input_reader._interco_power_ratings = interconnection_capacities_df
-
     # -- Expected result: aggregated by zone -- #
     expected_df = pd.DataFrame(columns=["zone_from", "zone_to", "Capacity (MW)"],
                                data=[
@@ -754,16 +750,13 @@ def test_read_interco_power_ratings(setup):
                                ])
 
     # -- Check calls to mocks -- #
-    INTERCO_FOLDER_NAME = 'interconnections_power_ratings_and_powers_2015_2019'
-    INTERCO_POWER_RATINGS_FILE_NAME = 'interconnections_power_ratings.xlsx'
+    from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME
     read_excel_mock.assert_called_once_with(db_dir / INTERCO_FOLDER_NAME / INTERCO_POWER_RATINGS_FILE_NAME)
 
     map_full_name_mock.assert_called_once()
 
     # -- Check result -- #
     pd.testing.assert_frame_equal(interconnection_capacities_df, expected_df)
-
-    patch.stopall()
 
 
 def test_read_interco_powers(setup):
@@ -815,6 +808,3 @@ def test_read_interco_powers(setup):
     map_full_name_mock.assert_called_once()
 
     pd.testing.assert_frame_equal(result_df, expected_df)
-
-    # Stop patches
-    patch.stopall()

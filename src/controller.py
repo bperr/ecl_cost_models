@@ -13,22 +13,22 @@ SIMULATED_POWERS_FILE_ROOT = 'simulated_powers_by_sector'
 
 class Controller:
     """
-        Coordinates the reading of input data, processing of power and price data, construction of network-based price
-        models, and export of results
+    Coordinates the reading of input data, processing of power and price data, construction of network-based price
+    models, and export of results
 
-        This class acts as the main interface to build and export energy price models based on historical data for
-        different zones, sectors, and years.
+    This class acts as the main interface to build and export energy price models based on historical data for
+    different zones, sectors, and years.
     """
 
     def __init__(self, work_dir: Path, db_dir: Path):
         """
-            Initializes the Controller with working and database directories
+        Initializes the Controller with working and database directories
 
-            Sets up the input reader and loads all required user inputs and database information including prices and
-            power data
+        Sets up the input reader and loads all required user inputs and database information including prices and
+        power data
 
-            :param work_dir: Path to the working directory where outputs will be saved
-            :param db_dir: Path to the database directory containing input data files
+        :param work_dir: Path to the working directory where outputs will be saved
+        :param db_dir: Path to the database directory containing input data files
        """
         self._input_reader = InputReader(work_dir, db_dir)
         self._work_dir = work_dir
@@ -44,13 +44,13 @@ class Controller:
 
     def build_price_models(self):
         """
-            Build price models for each time period defined in self._years
+        Build price models for each time period defined in self._years
 
-            For each (start_year, end_year) pair, this method:
-              - Filters relevant price and power data
-              - Initializes a Network instance and adds zones with associated data
-              - Builds price models using initial prices
-              - Call the method to export the resulting price models to an Excel file and saves associated plots
+        For each (start_year, end_year) pair, this method:
+          - Filters relevant price and power data
+          - Initializes a Network instance and adds zones with associated data
+          - Builds price models using initial prices
+          - Call the method to export the resulting price models to an Excel file and saves associated plots
         """
         create_file = True
         current_date = datetime.now().strftime("%Y%m%d_%Hh%M")
@@ -77,18 +77,18 @@ class Controller:
 
     def export_price_models(self, start_year: int, end_year: int, create_file: bool, current_date: str):
         """
-            Export the generated price models for all zones and sectors to an Excel file and save visual plots in the
-            working directory in a directory called "results YYYYMMDD_HHhMM"
+        Export the generated price models for all zones and sectors to an Excel file and save visual plots in the
+        working directory in a directory called "results YYYYMMDD_HHhMM"
 
-            Each zone's model prices are structured into rows representing:
-              - Maximum and minimum consumption prices (Cons_max, Cons_min)
-              - Maximum and minimum production prices (Prod_max, Prod_min)
+        Each zone's model prices are structured into rows representing:
+          - Maximum and minimum consumption prices (Cons_max, Cons_min)
+          - Maximum and minimum production prices (Prod_max, Prod_min)
 
-            :param start_year: Starting year of the modelled period
-            :param end_year: Ending year of the modelled period
-            :param create_file: Whether to create a new Excel file (True) or append to an existing one
-            with a new sheet (False)
-            :param current_date: Timestamp string used to name the output folder for results
+        :param start_year: Starting year of the modelled period
+        :param end_year: Ending year of the modelled period
+        :param create_file: Whether to create a new Excel file (True) or append to an existing one
+        with a new sheet (False)
+        :param current_date: Timestamp string used to name the output folder for results
         """
         data = []
 
@@ -129,16 +129,16 @@ class Controller:
 
     def build_network_model(self, start_year: int, end_year: int):
         """
-            Builds the entire energy network model for the specified time period
+        Builds the entire energy network model for the specified time period
 
-            This method initializes the network if it has not already been built : it adds the user defined zones, their
-            historical prices, storages and sectors with their historical powers to the network.
+        This method initializes the network if it has not already been built : it adds the user defined zones, their
+        historical prices, storages and sectors with their historical powers to the network.
 
-            It also adds interconnections between zones based on power ratings and historical flow data to the network.
-            Finally, it computes the total demand for each zone (main load)
+        It also adds interconnections between zones based on power ratings and historical flow data to the network.
+        Finally, it computes the total demand for each zone (main load)
 
-            :param start_year: Starting year of the modelled period
-            :param end_year: Ending year of the modelled period
+        :param start_year: Starting year of the modelled period
+        :param end_year: Ending year of the modelled period
         """
         # ------- add zones -------
         self._network = Network()
@@ -153,7 +153,7 @@ class Controller:
                                    storages=self._storages, controllable_sectors=self._controllable_sectors,
                                    historical_prices=prices[zone])
 
-        price_models = (self._input_reader.read_price_models())[f"{start_year}-{end_year}"]
+        price_models = self._input_reader.read_price_models()[f"{start_year}-{end_year}"]
 
         # check that data from price_models excel is consistent
         self._network.check_price_models(price_models, self._storages)
@@ -162,11 +162,8 @@ class Controller:
         self._network.set_price_model(price_models)
 
         # ------- add interconnections -------
-        all_interco_powers = self._interco_powers
-        interco_power_ratings = self._interco_power_ratings
-
         # power_rating excel is used to navigate through the interconnections
-        for index, row in interco_power_ratings.iterrows():
+        for index, row in self._interco_power_ratings.iterrows():
             zone_from = row['zone_from']
             zone_to = row['zone_to']
             power_rating = row['Capacity (MW)']
@@ -184,18 +181,16 @@ class Controller:
                 continue
 
             # If new interconnection : creation of the power series for this interconnection
-            flow_forward = all_interco_powers[
-                (all_interco_powers['zone_from'] == zone_from) & (all_interco_powers['zone_to'] == zone_to)
-                ].copy()
-            flow_forward['Net import Power'] = flow_forward['Power (MW)']
+            flow_forward = self._interco_powers[
+                (self._interco_powers['zone_from'] == zone_from) & (self._interco_powers['zone_to'] == zone_to)
+                ].set_index("Time")["Power (MW)"]
 
-            flow_backward = all_interco_powers[
-                (all_interco_powers['zone_from'] == zone_to) & (all_interco_powers['zone_to'] == zone_from)
-                ].copy()
-            flow_backward['Net import Power'] = -flow_backward['Power (MW)']
+            flow_backward = self._interco_powers[
+                (self._interco_powers['zone_from'] == zone_to) & (self._interco_powers['zone_to'] == zone_from)
+                ].set_index("Time")["Power (MW)"]
 
-            interco_flow = pd.concat([flow_forward, flow_backward], ignore_index=True)
-            interco_powers = interco_flow.groupby('Time')['Net import Power'].sum().sort_index()
+            # Net power : forward - backward
+            interco_powers = flow_forward.sub(flow_backward, fill_value=0).sort_index()
 
             self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
                                               power_rating, interco_powers)
@@ -213,11 +208,11 @@ class Controller:
 
     def run_opfs(self):
         """
-           Runs the Optimal Power Flow (OPF) simulations for the configured time periods
+        Runs the Optimal Power Flow (OPF) simulations for the configured time periods
 
-            For each defined period, this method builds the corresponding network model and sequentially runs
-            the OPF calculation for each timestep within that period. After all OPF simulations are completed
-            for a given period, the results are exported.
+        For each defined period, this method builds the corresponding network model and sequentially runs
+        the OPF calculation for each timestep within that period. After all OPF simulations are completed
+        for a given period, the results are exported.
         """
         for start_year, end_year in self._years:
             self.build_network_model(start_year, end_year)
@@ -227,16 +222,16 @@ class Controller:
 
     def export_opfs(self):
         """
-            Exports the results of the Optimal Power Flow (OPF) simulations for each zone.
+        Exports the results of the Optimal Power Flow (OPF) simulations for each zone.
 
-            For each zone in the network, this method retrieves the simulated power time series for each sector,
-            compiles them into a single DataFrame, and exports the results to an Excel file. Each file is saved
-            in a directory named according to the simulation period.
+        For each zone in the network, this method retrieves the simulated power time series for each sector,
+        compiles them into a single DataFrame, and exports the results to an Excel file. Each file is saved
+        in a directory named according to the simulation period.
 
-            - The OPF simulation results must be available in the '_simulated_powers' attribute of each sector.
-            - The export format includes a timestamp column ('Début de l'heure') and one column per sector
-              showing the simulated power in MW.
-            - The directory is created under the working directory.
+        - The OPF simulation results must be available in the '_simulated_powers' attribute of each sector.
+        - The export format includes a timestamp column ('Début de l'heure') and one column per sector
+          showing the simulated power in MW.
+        - The directory is created under the working directory.
         """
         for zone_name, zone in self._network.zones.items():
             sectors = zone.sectors
@@ -251,12 +246,12 @@ class Controller:
             # Build the DataFrame with data from all sectors of the current zone
             combined_df = pd.concat(sector_data, axis=1)
 
-            # Create a first column "Début de l'heure" with index (timesteps)
-            combined_df.insert(0, 'Début de l\'heure', combined_df.index)
+            # Create a first column "Start time" with index (timesteps)
+            combined_df.insert(0, 'Start time', combined_df.index)
 
             # sheet name
-            start_year = combined_df['Début de l\'heure'].min().year
-            end_year = combined_df['Début de l\'heure'].max().year
+            start_year = combined_df['Start time'].min().year
+            end_year = combined_df['Start time'].max().year
             sheet_name = f'{start_year}-{end_year}'
 
             # file path

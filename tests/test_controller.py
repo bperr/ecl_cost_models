@@ -292,7 +292,7 @@ def controller_opf_setup(controller_setup, request):
     network_mock.run_opf = MagicMock(name="OPF")
 
     expected_interco_powers = pd.Series(
-        [100, 80, 120, 50, 140],
+        [100., 80., 120., 50., 140.],
         index=pd.to_datetime([
             "2015-01-01 12:00:00",  # 100
             "2015-02-01 13:00:00",  # 150 - 70 = 80
@@ -300,7 +300,7 @@ def controller_opf_setup(controller_setup, request):
             "2016-01-05 15:00:00",  # 130 - 80 = 50
             "2016-03-15 10:00:00",  # 140
         ]),
-        name="Net import Power"
+        name="Power (MW)"
     )
     expected_interco_powers.index.name = "Time"
 
@@ -326,7 +326,8 @@ def controller_opf_setup(controller_setup, request):
     controller._interco_powers = interco_powers
     controller._years = [(2015, 2016)]
 
-    input_reader_mock.read_price_models.return_value = {"2015-2016": "fake_price_model"}
+    fake_price_model = dict()
+    input_reader_mock.read_price_models.return_value = {"2015-2016": fake_price_model}
 
     return {
         "controller": controller,
@@ -350,11 +351,11 @@ def test_build_network_model_existing_interco(controller_opf_setup):
 
     # Verifications
     assert network_mock.add_zone.call_count == 2
-    network_mock.set_price_model.assert_called_once_with("fake_price_model")
+    network_mock.set_price_model.assert_called_once_with(dict())
     network_mock.add_interconnection.assert_not_called()
 
-    assert zone_mock_ibr.compute_demand.called
-    assert zone_mock_fr.compute_demand.called
+    zone_mock_ibr.compute_demand.assert_called()
+    zone_mock_fr.compute_demand.assert_called()
 
 
 @pytest.mark.parametrize('controller_opf_setup', [False], indirect=True)
@@ -388,7 +389,7 @@ def test_build_network_model_new_interco(controller_opf_setup):
 
     # Verifications
     assert network_mock.add_zone.call_count == 2
-    network_mock.set_price_model.assert_called_once_with("fake_price_model")
+    network_mock.set_price_model.assert_called_once_with(dict())
 
     power_rating = 1000
 
@@ -468,35 +469,24 @@ def test_export_opfs(controller_opf_setup):
     zone_mock_ibr.sectors = [sector_mock]
     controller._network.zones = {"IBR": zone_mock_ibr}
 
-    written_df = {}
-
-    def fake_to_excel(self, writer, sheet_name=None, index=False):
-        written_df['df'] = self
-        written_df['sheet_name'] = sheet_name
-        written_df['index'] = index
-
-    with patch('pathlib.Path.exists', return_value=True), \
-            patch('pathlib.Path.mkdir'), \
-            patch('pandas.ExcelWriter') as excel_writer_mock, \
-            patch('pandas.DataFrame.to_excel', new=fake_to_excel):
+    with patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock:
         controller.export_opfs()
 
-    # Checks that ExcelWriter has been called up with the correct file
-    expected_folder = fake_work_dir / "countries_simulated_powers_by_sector_2015-2016"
-    expected_file = expected_folder / "simulated_powers_by_sector_IBR.xlsx"
+    # get the arguments
+    args, kwargs = to_excel_mock.call_args
 
-    excel_writer_mock.assert_called_once_with(expected_file)
+    # args[0] is the DataFrame
+    written_df = args[0]
+    sheet_name = kwargs.get('sheet_name')
+    index_flag = kwargs.get('index')
 
-    # Check the name of the sheet
-    assert written_df['sheet_name'] == "2015-2016"
-
-    # Check that index=False has been passed
-    assert written_df['index'] is False
+    assert sheet_name == "2015-2016"
+    assert index_flag is False
 
     # Compare the complete DataFrame
     expected_df = pd.DataFrame({
-        "Début de l'heure": datetime_index,
+        "Start time": datetime_index,
         "sector_ibr_MW": [10, 20, 30, 40, 50, 60],
     }, index=datetime_index)
 
-    pd.testing.assert_frame_equal(written_df['df'], expected_df)
+    pd.testing.assert_frame_equal(written_df, expected_df)

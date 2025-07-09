@@ -258,13 +258,13 @@ def test_updated_simulated_powers(zone_test_setup):
     timestep = pd.Timestamp("2015-01-01 12:00:00")
 
     # Act
-    zone.update_simulated_powers(timestep)
+    zone.store_simulated_power(timestep)
 
     # Assert
-    # Check that each sector has called update_simulated_powers with the correct timestep
+    # Check that each sector has called store_simulated_power with the correct timestep
     for sector in zone._sectors:
-        sector.update_simulated_powers.assert_called_once_with(timestep)
+        sector.store_simulated_power.assert_called_once_with(timestep)
 
-    # Checks that each interconnection has called update_simulated_powers with the correct timestep
+    # Checks that each interconnection has called store_simulated_power with the correct timestep
     for interconnection in zone._interconnections:
-        interconnection.update_simulated_powers.assert_called_once_with(timestep)
+        interconnection.store_simulated_power.assert_called_once_with(timestep)

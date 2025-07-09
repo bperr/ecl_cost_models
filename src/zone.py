@@ -9,11 +9,11 @@ from src.storage import Storage
 
 class Zone:
     """
-        Represents a geographical or zone (composed of one or more countries, defined in the user inputs)
-        in the energy network
+    Represents a geographical or zone (composed of one or more countries, defined in the user inputs)
+    in the energy network
 
-        Each zone contains multiple sectors, along with historical SPOT price data and mechanisms for
-        building price models, computing demand, and plotting results
+    Each zone contains multiple sectors, along with historical SPOT price data and mechanisms for
+    building price models, computing demand, and plotting results
     """
 
     def __init__(self, zone_name: str, historical_prices: pd.Series):
@@ -46,12 +46,12 @@ class Zone:
 
     def add_sector(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool):
         """
-            Adds a new sector (production or consumption) to the zone with its name, historical powers
-            and controllability. Updates the list of sectors accordingly.
+        Adds a new sector (production or consumption) to the zone with its name, historical powers
+        and controllability. Updates the list of sectors accordingly.
 
-            :param sector_name: Name of the sector
-            :param historical_powers: Power data for the sector in MW
-            :param is_controllable: Indicates whether the sector is controllable
+        :param sector_name: Name of the sector
+        :param historical_powers: Power data for the sector in MW
+        :param is_controllable: Indicates whether the sector is controllable
         """
         sector = Sector(sector_name, historical_powers, is_controllable)
         sector.build_availabilities()
@@ -59,9 +59,9 @@ class Zone:
 
     def build_price_model(self, prices_init: tuple):
         """
-            Builds price models for all sectors in the zone
+        Builds price models for all sectors in the zone
 
-            :param prices_init: Tuple of bounds and step size for price search
+        :param prices_init: Tuple of bounds and step size for price search
         """
 
         print(f"\n ==== Building price model for {self._name} ====")
@@ -74,17 +74,17 @@ class Zone:
                                      zone_name=self._name)
         print("=" * 30)
 
-    def set_price_model(self, price_models: dict):
+    def set_price_model(self, price_models: dict[str, list[float]]):
         """
-            Assign a price model to each sector in the zone.
+        Assign a price model to each sector in the zone.
 
-            For each sector in the zone:
-            - If the sector is a storage load (is_storage_load == True),
-            use the price components in the order [cons_none, cons_full].
-            - Otherwise, the price components are used in the order [prod_none, prod_full].
+        For each sector in the zone:
+        - If the sector is a storage load (is_storage_load == True),
+        use the price components in the order [cons_none, cons_full].
+        - Otherwise, the price components are used in the order [prod_none, prod_full].
 
-            :param price_models: Dictionary of price models by sector. Expected format:
-                price_models[sector_name] = [cons_full, cons_none, prod_none, prod_full]
+        :param price_models: Dictionary of price models by sector. Expected format:
+            price_models[sector_name] = [cons_full, cons_none, prod_none, prod_full]
         """
         for sector in self.sectors:
             price_components = price_models[sector.name]
@@ -96,14 +96,14 @@ class Zone:
 
     def compute_demand(self, net_imports: pd.Series):
         """
-            Calculates the net demand for the zone, adjusted for imports and exports.
+        Calculates the net historical demand for the zone, adjusted for imports and exports.
 
-            If demand has not yet been calculated (_power_demand attribute empty), production for all sectors is summed
-            and imports/exports are added to obtain net demand.
+        If demand has not yet been calculated (_power_demand attribute empty), production for all sectors is summed
+        and imports/exports are added to obtain net demand.
 
-            :param net_imports: Time series of net power imports (positive = import, negative = export).
-                                If net_imports is None or not supplied, the series is considered to be zero
-                                (no exchanges).
+        :param net_imports: Time series of net power imports (positive = import, negative = export).
+                            If net_imports is None or not supplied, the series is considered to be zero
+                            (no exchanges).
         """
         if len(self._power_demand) == 0:
             # The production from all sectors is summed
@@ -118,12 +118,12 @@ class Zone:
 
     def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool):
         """
-            Adds an energy storage unit to the zone. Updates the list of sectors accordingly.
-            This includes both the charging (load) and discharging (generator) components that have the same sector name
+        Adds an energy storage unit to the zone. Updates the list of sectors accordingly.
+        This includes both the charging (load) and discharging (generator) components that have the same sector name
 
-            :param sector_name: Name of the storage unit
-            :param historical_powers: Power time series of the storage (consumption and generation) in MW
-            :param is_controllable: Indicates whether the storage behavior is controllable
+        :param sector_name: Name of the storage unit
+        :param historical_powers: Power time series of the storage (consumption and generation) in MW
+        :param is_controllable: Indicates whether the storage behavior is controllable
         """
         storage = Storage(sector_name, historical_powers, is_controllable)
         storage.load.build_availabilities()
@@ -142,35 +142,35 @@ class Zone:
 
     def cost_function(self, timestep: pd.Timestamp) -> float:
         """
-            Calculates the cost of the system within the zone at the given timestep
-            Not implemented yet
-            :return:
+        Calculates the cost of the system within the zone at the given timestep
+        Not implemented yet
+        :return:
         """
 
-    def update_simulated_powers(self, timestep):
+    def store_simulated_power(self, timestep: pd.Timestamp):
         """
-            Updates the simulated powers for all sectors and interconnections in the zone for a specific timestep.
+        Updates the simulated powers for all sectors and interconnections in the zone for a specific timestep.
 
-            This method loops through all sectors and all interconnections associated with the zone,
-            and calls their `update_simulated_powers` method for the provided timestep to refresh their simulated power
-            time series.
+        This method loops through all sectors and all interconnections associated with the zone,
+        and calls their `store_simulated_power` method for the provided timestep to refresh their simulated power
+        time series.
 
-            Used during the power flow simulation to update results at each timestep.
+        Used during the power flow simulation to update results at each timestep.
 
-            :param timestep: pd.Timestamp representing the current simulation timestep.
+        :param timestep: pd.Timestamp representing the current simulation timestep.
         """
         for sector in self._sectors:
-            sector.update_simulated_powers(timestep)
+            sector.store_simulated_power(timestep)
 
         for interconnection in self._interconnections:
-            interconnection.update_simulated_powers(timestep)
+            interconnection.store_simulated_power(timestep)
 
     def save_plots(self, path):
         """
-            Saves the historical use ratios vs. price and the resulting piecewise linear model
-            for each sector in the zone
+        Saves the historical use ratios vs. price and the resulting piecewise linear model
+        for each sector in the zone
 
-            :param path: path where plots will be saved
+        :param path: path where plots will be saved
         """
         for sector in self.sectors:
             if sector.is_storage_load:

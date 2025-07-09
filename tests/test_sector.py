@@ -255,7 +255,7 @@ def test_plot_result_variants(tmp_path, is_storage_load, price_model, expected_t
     assert path.exists()
 
 
-def test_update_simulated_powers(sector_setup):
+def test_store_simulated_power(sector_setup):
     # fake data
     sector = sector_setup["sector_prod"]
     timestep = pd.Timestamp("2015-01-01 12:00:00")
@@ -263,7 +263,7 @@ def test_update_simulated_powers(sector_setup):
     sector._current_power = 150
 
     # tested method
-    sector.update_simulated_powers(timestep)
+    sector.store_simulated_power(timestep)
 
     # Verifications
     expected_series = pd.Series([150], index=[timestep])
