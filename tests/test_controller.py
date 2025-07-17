@@ -348,7 +348,7 @@ def test_build_network_model_existing_interco(controller_opf_setup):
     zone_mock_fr = controller_opf_setup["zone_mock_fr"]
 
     # Run method
-    controller.build_network_model(2015, 2016)
+    model_built = controller.build_network_model(2015, 2016)
 
     # Verifications
     assert network_mock.add_zone.call_count == 2
@@ -357,6 +357,7 @@ def test_build_network_model_existing_interco(controller_opf_setup):
 
     zone_mock_ibr.compute_demand.assert_called()
     zone_mock_fr.compute_demand.assert_called()
+    assert model_built
 
 
 @pytest.mark.parametrize('controller_opf_setup', [False], indirect=True)
@@ -386,7 +387,7 @@ def test_build_network_model_new_interco(controller_opf_setup):
     network_mock.interconnections = created_interconnections
 
     # Run method
-    controller.build_network_model(2015, 2016)
+    model_built = controller.build_network_model(2015, 2016)
 
     # Verifications
     assert network_mock.add_zone.call_count == 2
@@ -411,34 +412,94 @@ def test_build_network_model_new_interco(controller_opf_setup):
     fr_call_args = zone_mock_fr.compute_demand.call_args[0][0]
     assert_series_equal(fr_call_args.sort_index(), expected_net_import_fr.sort_index())
 
+    assert model_built
+
+
+@pytest.mark.parametrize('controller_opf_setup', [True], indirect=True)
+def test_build_network_model_returns_false_if_PL_and_before_2018(controller_opf_setup):
+    controller = controller_opf_setup["controller"]
+    zone_mock_PL = MagicMock(name="PL_zone")
+    zone_mock_PL.name = 'PL'
+    controller._zones.append('PL')
+
+    def get_countries_in_zone_mock(zone_name):
+        if zone_name == 'PL':
+            return ['PL', 'DE']
+        else:
+            return []
+
+    input_reader_mock = MagicMock()
+    input_reader_mock.get_countries_in_zone.side_effect = get_countries_in_zone_mock
+    fake_price_model = dict()
+    input_reader_mock.read_price_models.return_value = {"2015-2016": fake_price_model, "2018-2019": fake_price_model}
+    controller._input_reader = input_reader_mock
+
+    # Run method that should return False and raise a warning
+    with pytest.warns(UserWarning, match="Price data for Poland is incomplete before 2018"):
+        model_built_false = controller.build_network_model(2015, 2016)
+
+    # Fake data to test a situation with PL in zones but after 2018
+    powers = {
+        "IBR": pd.DataFrame({"solar": [200],
+                             "hydro pump storage": [-200, ]},
+                            index=[Timestamp("2018-01-01 12:00:00")]),
+        "FR": pd.DataFrame({"solar": [200],
+                            "hydro pump storage": [0]},
+                           index=[Timestamp("2018-01-01 12:00:00")]),
+        "PL": pd.DataFrame({"solar": [200],
+                            "hydro pump storage": [0]},
+                           index=[Timestamp("2018-01-01 12:00:00")])
+    }
+    prices = pd.DataFrame({
+        "IBR": [50],
+        "FR": [48],
+        "PL": [48],
+    }, index=[Timestamp("2018-01-01 12:00:00")])
+
+    controller._powers = powers
+    controller._prices = prices
+
+    # Run method that should return True
+    model_built_true = controller.build_network_model(2018, 2019)
+
+    # Verifications
+    assert model_built_false is False
+    assert model_built_true is True
+
 
 def test_run_opfs(controller_opf_setup):
     # Definition of mocks
     controller = controller_opf_setup["controller"]
     controller._network = controller_opf_setup["network"]
+    controller._years = [(2015, 2016), (2018, 2019)]
 
-    controller.build_network_model = MagicMock()
+    # model_built = True if (start_year, end_year) == (2018, 2019), False otherwise
+    controller.build_network_model = MagicMock(
+        side_effect=lambda start_year, end_year: (start_year, end_year) == (2018, 2019))
     controller.export_opfs = MagicMock()
 
     controller._network.datetime_index = [
-        "01/01/2015 12:00:00",
-        "01/02/2015 12:00:00",
-        "01/03/2015 12:00:00"
+        "01/01/2018 12:00:00",
+        "01/02/2018 12:00:00",
+        "01/03/2018 12:00:00"
     ]
 
     # Execution of the method to be tested
     controller.run_opfs()
 
     # Vérifications
-    controller.build_network_model.assert_called_once_with(2015, 2016)
+    controller.build_network_model.assert_has_calls([
+        call(2015, 2016),
+        call(2018, 2019)
+    ])
 
     # Checking calls to run_opf
-    controller._network.run_opf.assert_any_call("01/01/2015 12:00:00")
-    controller._network.run_opf.assert_any_call("01/02/2015 12:00:00")
-    controller._network.run_opf.assert_any_call("01/03/2015 12:00:00")
+    controller._network.run_opf.assert_any_call("01/01/2018 12:00:00")
+    controller._network.run_opf.assert_any_call("01/02/2018 12:00:00")
+    controller._network.run_opf.assert_any_call("01/03/2018 12:00:00")
     assert controller._network.run_opf.call_count == 3
 
-    # Checking the call to export_opfs
+    # Checking only one call to export_opfs (for 2018-2019)
     controller.export_opfs.assert_called_once_with()
 
 

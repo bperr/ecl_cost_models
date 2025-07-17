@@ -1,3 +1,4 @@
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from src.network import Network
 
 SIMULATED_POWERS_DIRECTORY_ROOT = 'countries_simulated_powers_by_sector'
 SIMULATED_POWERS_FILE_ROOT = 'simulated_powers_by_sector'
+YEAR_PL_AVAILABLE_DATA = 2018
 
 
 class Controller:
@@ -129,7 +131,8 @@ class Controller:
 
     def build_network_model(self, start_year: int, end_year: int):
         """
-        Builds the entire energy network model for the specified time period
+        Builds the entire energy network model for the specified time period if data is available
+        (especially Poland Price data) and returns if the model was built or not.
 
         This method initializes the network if it has not already been built : it adds the user defined zones, their
         historical prices, storages and sectors with their historical powers to the network.
@@ -139,6 +142,8 @@ class Controller:
 
         :param start_year: Starting year of the modelled period
         :param end_year: Ending year of the modelled period
+
+        :return: bool True if the model was built, False otherwise
         """
         # ------- add zones -------
         self._network = Network()
@@ -148,10 +153,23 @@ class Controller:
             for zone, df in self._powers.items()
         }
 
+        skipped_timestep_counter = 0
         for zone in self._zones:
-            self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
-                                   storages=self._storages, controllable_sectors=self._controllable_sectors,
-                                   historical_prices=prices[zone])
+            if ('PL' in self._input_reader.get_countries_in_zone(zone)
+                    and (start_year < YEAR_PL_AVAILABLE_DATA)):
+                warnings.warn(f"Price data for Poland is incomplete before 2018. The simulation for "
+                              f"{start_year}-{end_year} cannot be performed, please change the input years")
+                return False
+
+            else:
+                skipped_timestep_counter += self._network.add_zone(zone_name=zone,
+                                                                   sectors_historical_powers=powers[zone],
+                                                                   storages=self._storages,
+                                                                   controllable_sectors=self._controllable_sectors,
+                                                                   historical_prices=prices[zone])
+
+        print(f"Skipped {skipped_timestep_counter} timesteps for time period '{start_year}-{end_year}' "
+              f"because of missing data (prices)")
 
         price_models = self._input_reader.read_price_models()[f"{start_year}-{end_year}"]
 
@@ -206,6 +224,8 @@ class Controller:
                     net_import += interconnection.historical_powers
             zone.compute_demand(net_import)
 
+        return True
+
     def run_opfs(self):
         """
         Runs the Optimal Power Flow (OPF) simulations for the configured time periods
@@ -215,7 +235,9 @@ class Controller:
         for a given period, the results are exported.
         """
         for start_year, end_year in self._years:
-            self.build_network_model(start_year, end_year)
+            model_built = self.build_network_model(start_year, end_year)
+            if not model_built:
+                continue
             for timestep in self._network.datetime_index:
                 self._network.run_opf(timestep)
             self.export_opfs()

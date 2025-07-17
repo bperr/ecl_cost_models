@@ -15,7 +15,7 @@ class Network:
     def __init__(self):
         self._zones: dict[str, Zone] = dict()
         self._interconnections: list[Interconnection] = list()
-        self._datetime_index = None  # Updated in add_zone
+        self._datetime_index: list[pd.Timestamp] | None = None  # Updated in add_zone
 
     @property
     def zones(self):
@@ -47,20 +47,19 @@ class Network:
         # update the attribute datetime_index with the timesteps (indexes) of the first zone's historical power data
         # these timesteps are then used as timesteps for the opfs
         if self._datetime_index is None:
-            self._datetime_index = sectors_historical_powers.index
+            valid_prices = historical_prices.dropna()
+            skipped_timestep_counter = len(historical_prices.index) - len(valid_prices.index)
+            self._datetime_index = valid_prices.index
+
         else:
             idx1 = self._datetime_index
-            idx2 = sectors_historical_powers.index
+            idx2 = historical_prices.dropna().index
 
-            if not idx1.equals(idx2):
-                diff_1 = idx1.difference(idx2)
-                diff_2 = idx2.difference(idx1)
+            common_idx = idx1.intersection(idx2)
+            skipped_timesteps = idx1.difference(common_idx)
 
-                print(f"Timestep issue for {zone_name}")
-                if not diff_1.empty:
-                    print(f"Timestamps in self._datetime_index but not in sectors_historical_powers: {diff_1}")
-                if not diff_2.empty:
-                    print(f"Timestamps in sectors_historical_powers but not in self._datetime_index: {diff_2}")
+            self._datetime_index = common_idx
+            skipped_timestep_counter = len(skipped_timesteps)
 
         for sector_name in sectors_historical_powers.columns:
             is_controllable = sector_name in controllable_sectors
@@ -69,21 +68,19 @@ class Network:
             else:
                 zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable)
 
+        return skipped_timestep_counter
+
     def add_interconnection(self, zone_from: Zone, zone_to: Zone, interco_power_rating: float,
                             historical_power_flows: pd.Series):
         """
         Adds an interconnection between two zones
 
         :param zone_from: Zone object representing the "exporting" zone
-            (power data with sign + when zone_from is exporting and sign - when zone_from is importing)
         :param zone_to: Zone object representing the "importing" zone
         :param interco_power_rating: The interconnection power rating between the two zones
         :param historical_power_flows: pd.Series containing historical power flows between the two zones per hour
         (positive when power is transferred from zone "from" to zone "to" and negative if power is transferred in
         the opposite direction)
-
-        Note:
-            Method currently not implemented (will be for OPF).
         """
         interconnection = Interconnection(zone_from, zone_to, interco_power_rating, historical_power_flows)
         self._interconnections.append(interconnection)
@@ -151,9 +148,9 @@ class Network:
                     raise ValueError(f"Missing production prices for '{sector}' in zone '{zone}'")
                 if prod_none > prod_full:
                     raise ValueError(
-                            f"Logical error: Prod_none > Prod_full for '{sector}' in zone '{zone}' "
-                            f"({prod_none} > {prod_full})"
-                        )
+                        f"Logical error: Prod_none > Prod_full for '{sector}' in zone '{zone}' "
+                        f"({prod_none} > {prod_full})"
+                    )
 
                 if sector in storages:
                     # Check consumption prices
@@ -175,15 +172,6 @@ class Network:
                         raise ValueError(
                             f"Sector '{sector}' in zone '{zone}' is not storage but has consumption prices."
                         )
-
-    def check_power_models(self):
-        """
-        Validates power models for each sector or interconnection
-
-        Note:
-            Method currently not implemented (will be for OPF).
-        """
-        pass
 
     def run_opf(self, timestep: pd.Timestamp):
         """
@@ -208,3 +196,12 @@ class Network:
         # Update each sector._simulated_powers
         # Update each interconnection._simulated_powers
         raise NotImplementedError
+
+    def check_power_models(self):
+        """
+        Validates power models for each sector or interconnection
+
+        Note:
+            Method currently not implemented (will be for OPF).
+        """
+        pass

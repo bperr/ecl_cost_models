@@ -65,6 +65,9 @@ class InputReader:
     def work_dir(self):
         return self._work_dir
 
+    def get_countries_in_zone(self, zone_name: str) -> list[str]:
+        return self._zones[zone_name]
+
     def read_user_inputs(self):
         """
         Reads user-defined configuration from the Excel file 'User_inputs.xlsx' and updates the attributes of the class
@@ -227,6 +230,9 @@ class InputReader:
             df.set_index(df.columns[0],
                          inplace=True)  # First column (time) as index and Column name is also kept as index name
 
+            # keep the first value of duplicated timesteps (October time change)
+            df = df[~df.index.duplicated(keep='first')]
+
             country_power_dfs[country] = df
 
         # Group by zone
@@ -322,7 +328,10 @@ class InputReader:
                 all_dfs.append(zone_df)  # Storing all zones data in the all_dfs dataframe (for one year)
 
         # Storing all studied years data in the main dataframe
-        self._historical_prices = pd.concat(all_dfs).sort_index()
+        historical_prices = pd.concat(all_dfs).sort_index()
+
+        # keep the first value of duplicated timesteps (October time change)
+        self._historical_prices = historical_prices[~historical_prices.index.duplicated(keep='first')]
 
         return self._historical_prices
 
@@ -528,6 +537,9 @@ class InputReader:
             # Load data from the specified sheet
             df_interco_raw = pd.read_excel(file_path_data, sheet_name=sheet_name)
 
+            # keep the first value of duplicated timesteps (October time change)
+            df_interco_raw = df_interco_raw.drop_duplicates(subset="Time", keep="first")
+
             # --- Reshape data to good format ---
             # Transform the dataframe into a 3 columns dataframe: "Time", "direction" and "Power (MW)"
             reshaped_df = df_interco_raw.set_index("Time").stack().reset_index(name="Power (MW)").rename(
@@ -565,5 +577,4 @@ class InputReader:
             raise ValueError(f"No valid sheets found in '{file_path_data}'.")
 
         self._interco_powers = pd.concat(all_years_data, ignore_index=True).sort_values("Time")
-
         return self._interco_powers

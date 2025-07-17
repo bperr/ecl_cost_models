@@ -6,9 +6,9 @@ import pandas as pd
 import pytest
 from pandas import Timestamp
 
+from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME, INTERCO_POWERS_FILE_NAME
 from src.input_reader import InputReader
 from src.input_reader import MAP_TO_ALPHA2_FILE_NAME
-from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME, INTERCO_POWERS_FILE_NAME
 
 
 def set_parse_side_effect(dataframes: dict[str, pd.DataFrame], mocks: dict):
@@ -72,6 +72,12 @@ def setup():
     }
 
     patch.stopall()
+
+
+def test_get_countries_in_zone(setup):
+    input_reader = setup["data"]["reader"]
+    input_reader._zones = {'IBR': ['ES', 'PT']}
+    assert input_reader.get_countries_in_zone('IBR') == ['ES', 'PT']
 
 
 def test_read_user_inputs_raise_error_if_file_does_not_exist(setup):
@@ -380,6 +386,48 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
         pd.testing.assert_frame_equal(historical_power[zone], expected_value[zone])
 
 
+def test_keep_first_value_powers_if_duplicated_timestep(prod_setup):
+    fr_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW"],
+                              data=[
+                                  [Timestamp("01/01/2015  12:00:00"), 1200, 3000],
+                                  [Timestamp("01/01/2015  13:00:00"), 1200, 3000],
+                                  [Timestamp("01/01/2015  14:00:00"), 1200, 3000],
+                                  [Timestamp("01/01/2015  14:00:00"), 1100, 3100],  # duplicated timestep
+                              ])
+
+    reader = prod_setup["reader"]
+    reader._years = [(2015, 2015)]
+    reader._prices_init = {"2015-2015": (0, 120, 0, 120, 12)}
+    reader._zones = {"FR": ["FR"]}
+    reader._sectors_group = {'biomass': {'biomass'},
+                             'fossil_gas': {'fossil_gas'}
+                             }
+
+    # Run function
+    with patch("pandas.read_excel", return_value=fr_prod_df):
+        historical_power = reader.read_db_powers()
+
+    expected_value = {
+        # Only FR and DE
+        'FR': pd.DataFrame({
+            'biomass': {
+                # Only 2015 time steps
+                Timestamp("01/01/2015  12:00:00"): 1200,
+                Timestamp("01/01/2015  13:00:00"): 1200,
+                Timestamp("01/01/2015  14:00:00"): 1200
+            },
+            'fossil_gas': {
+                # Only 2015 time steps
+                Timestamp("01/01/2015  12:00:00"): 3000,
+                Timestamp("01/01/2015  13:00:00"): 3000,
+                Timestamp("01/01/2015  14:00:00"): 3000
+            }
+        })}
+    expected_value['FR'].index.name = 'Début de l\'heure'
+
+    pd.testing.assert_frame_equal(historical_power['FR'], expected_value['FR'])
+
+
 # --- Prices --- #
 
 @pytest.fixture(scope='function')
@@ -500,6 +548,45 @@ def test_load_database_price_user_creates_expected_dataframe_structure(spot_setu
             Timestamp("01/01/2016  13:00:00"): 22.5,
             Timestamp("01/01/2016  14:00:00"): 15.
         }
+    })
+
+    pd.testing.assert_frame_equal(historical_prices, expected_value)
+
+
+def test_keep_first_value_prices_if_duplicated_timestep(spot_setup):
+    reader = spot_setup['reader']
+    reader._years = [(2015, 2015)]  # Get data from 2015 to 2016
+    reader._prices_init = {"2015-2015": (0, 120, 0, 120, 12)}
+
+    reader._zones = {"BE": ["BE"], "FR": ["FR"]}
+
+    spot_2015_df = pd.DataFrame(
+        columns=["BE", "FR"],
+        index=[Timestamp("01/01/2015  12:00:00"), Timestamp("01/01/2015  13:00:00"), Timestamp("01/01/2015  14:00:00"),
+               Timestamp("01/01/2015  14:00:00")],
+        data=[
+            [30, 10],
+            [35, 10],
+            [30, 20],
+            [20, 30]
+        ]
+    )
+
+    # Run function
+    with patch("pandas.read_excel", return_value=spot_2015_df):
+        historical_prices = reader.read_db_prices()
+
+    expected_value = pd.DataFrame({
+        'BE': {
+            Timestamp("01/01/2015  12:00:00"): 30.,
+            Timestamp("01/01/2015  13:00:00"): 35.,
+            Timestamp("01/01/2015  14:00:00"): 30.,
+        },
+        'FR': {
+            Timestamp("01/01/2015  12:00:00"): 10.,
+            Timestamp("01/01/2015  13:00:00"): 10.,
+            Timestamp("01/01/2015  14:00:00"): 20.,
+        },
     })
 
     pd.testing.assert_frame_equal(historical_prices, expected_value)
@@ -806,3 +893,39 @@ def test_read_interco_powers(setup):
     map_full_name_mock.assert_called_once()
 
     pd.testing.assert_frame_equal(result_df, expected_df)
+
+
+def test_keep_first_value_interco_powers_if_duplicated_timestep(setup):
+    db_dir = setup["data"]["fake directories"]["fake db dir"]
+    work_dir = setup["data"]["fake directories"]["fake work dir"]
+    input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
+    input_reader._zones = {'FR': ['FR'], 'ES': ['ES']}
+
+    # Create a fake interco power dataset
+    fake_excel_df = pd.DataFrame({
+        "Time": [pd.Timestamp("2015-01-01 00:00:00"), pd.Timestamp("2015-01-01 01:00:00"),
+                 pd.Timestamp("2015-01-01 01:00:00")],
+        "France --> Spain": [100, 50, 40],
+        "Spain --> France": [0, 10, 20],
+    })
+
+    # Run function
+    fake_name_code_mapping_dict = {'France': 'FR', 'Spain': 'ES'}
+    fake_excel_file = MagicMock()
+    fake_excel_file.sheet_names = ["2015"]
+    with patch("pandas.read_excel", return_value=fake_excel_df), \
+            patch("src.input_reader.InputReader.map_full_name_to_alpha2_code",
+                  return_value=fake_name_code_mapping_dict), \
+            patch('pandas.ExcelFile', return_value=fake_excel_file):
+        historical_powers = input_reader.read_interco_powers()
+
+        # Expected dataframe, the values of the second "2015-01-01 01:00:00" timestep should not be taken into account
+        expected_df = pd.DataFrame({
+            "Time": [pd.Timestamp("2015-01-01 00:00:00"),
+                     pd.Timestamp("2015-01-01 01:00:00"), pd.Timestamp("2015-01-01 01:00:00")],
+            "zone_from": ['FR', 'ES', 'FR'],
+            "zone_to": ['ES', 'FR', 'ES'],
+            "Power (MW)": [100, 10, 50]
+        }).sort_values("Time")
+
+    pd.testing.assert_frame_equal(historical_powers, expected_df)

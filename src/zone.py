@@ -23,14 +23,14 @@ class Zone:
         :param zone_name: Name of the zone
         :param historical_prices: Time series of electricity prices for the zone
         """
-        self._name = zone_name
-        self._historical_prices = historical_prices.dropna()  # in €/MWh
+        self._name: str = zone_name
+        self._historical_prices: pd.Series = historical_prices.dropna()  # in €/MWh
         self._sectors: list[Sector] = list()
         self._storages: list[Storage] = list()
 
         self._interconnections: list[Interconnection] = list()
-        self._power_demand = list()  # in MW
-        self._prices_out = list()  # in €/MWh
+        self._power_demand: list[float] = list()  # in MW
+        self._simulated_prices: list[float] = list()  # in €/MWh
 
     @property
     def name(self):
