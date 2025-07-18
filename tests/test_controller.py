@@ -340,6 +340,54 @@ def controller_opf_setup(controller_setup, request):
     }
 
 
+def test_check_price_models_valid():
+    price_models = {
+        "FR": {
+            "solar": [None, None, 50, 100],  # Non-storage sector with valid production prices
+            # Storage sector with valid consumption prices (cons_full <= cons_none & cons_none <= prod_none)
+            "battery": [10, 20, 40, 50]
+        }
+    }
+
+    storages = ["battery"]
+
+    # Should not raise
+    Controller.check_price_models(price_models, storages)
+
+
+@pytest.mark.parametrize("zone, sector, prices, storages, expected_error", [
+    # Not None cons prices for solar sector (not storage)
+    ("FR", "solar", [20, 30, 50, 60], [], "Sector 'solar' in zone 'FR' is not storage but has consumption prices"),
+    # Production price p0 > p100
+    ("FR", "solar", [None, None, 100, 90], [], "Logical error: Prod_none > Prod_full for 'solar' in zone 'FR'"),
+    # Consumption price c100 > c0
+    ("FR", "battery", [30, 20, 50, 60], ["battery"],
+     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'"),
+    # prod_none is None
+    ("FR", "solar", [None, None, None, 100], [], "Missing production prices for 'solar' in zone 'FR"),
+    # prod_full is None
+    ("FR", "solar", [None, None, 10, None], [], "Missing production prices for 'solar' in zone 'FR"),
+    # Storage: cons_full is None
+    ("FR", "battery", [None, 40, 10, 20], ["battery"],
+     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+    # Storage: cons_none is None
+    ("FR", "battery", [30, None, 10, 20], ["battery"],
+     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+    # Storage: cons_none > prod_none
+    ("FR", "battery", [30, 50, 40, 60], ["battery"],
+     r"Logical error: Cons_none > Prod_none for 'battery' in zone 'FR' \(50 > 40\)")
+])
+def test_check_price_models_raises_errors(zone, sector, prices, storages, expected_error):
+    price_models = {
+        zone: {
+            sector: prices
+        }
+    }
+
+    with pytest.raises(ValueError, match=expected_error):
+        Controller.check_price_models(price_models, storages)
+
+
 @pytest.mark.parametrize('controller_opf_setup', [True], indirect=True)
 def test_build_network_model_existing_interco(controller_opf_setup):
     controller = controller_opf_setup["controller"]
@@ -415,56 +463,75 @@ def test_build_network_model_new_interco(controller_opf_setup):
     assert model_built
 
 
+@pytest.mark.parametrize(
+    "start_year, end_year, expect_warning, expected_result",
+    [
+        (2015, 2016, True, False),  # Cas avant 2018 → warning + False
+        (2018, 2019, False, True),  # Cas à partir de 2018 → pas de warning + True
+    ]
+)
 @pytest.mark.parametrize('controller_opf_setup', [True], indirect=True)
-def test_build_network_model_returns_false_if_PL_and_before_2018(controller_opf_setup):
+def test_build_network_model_PL_behavior(controller_opf_setup, start_year, end_year, expect_warning, expected_result):
     controller = controller_opf_setup["controller"]
+    network = controller_opf_setup["network"]
+    network.datetime_index = pd.to_datetime([Timestamp("2018-01-01 12:00:00")])
+    # Mock zones
     zone_mock_PL = MagicMock(name="PL_zone")
     zone_mock_PL.name = 'PL'
     controller._zones.append('PL')
 
     def get_countries_in_zone_mock(zone_name):
-        if zone_name == 'PL':
-            return ['PL', 'DE']
-        else:
-            return []
+        return ['PL', 'DE'] if zone_name == 'PL' else []
 
+    # Mock input_reader
     input_reader_mock = MagicMock()
     input_reader_mock.get_countries_in_zone.side_effect = get_countries_in_zone_mock
-    fake_price_model = dict()
-    input_reader_mock.read_price_models.return_value = {"2015-2016": fake_price_model, "2018-2019": fake_price_model}
-    controller._input_reader = input_reader_mock
-
-    # Run method that should return False and raise a warning
-    with pytest.warns(UserWarning, match="Price data for Poland is incomplete before 2018"):
-        model_built_false = controller.build_network_model(2015, 2016)
-
-    # Fake data to test a situation with PL in zones but after 2018
-    powers = {
-        "IBR": pd.DataFrame({"solar": [200],
-                             "hydro pump storage": [-200, ]},
-                            index=[Timestamp("2018-01-01 12:00:00")]),
-        "FR": pd.DataFrame({"solar": [200],
-                            "hydro pump storage": [0]},
-                           index=[Timestamp("2018-01-01 12:00:00")]),
-        "PL": pd.DataFrame({"solar": [200],
-                            "hydro pump storage": [0]},
-                           index=[Timestamp("2018-01-01 12:00:00")])
+    input_reader_mock.read_price_models.return_value = {
+        "2015-2016": {}, "2018-2019": {}
     }
-    prices = pd.DataFrame({
-        "IBR": [50],
-        "FR": [48],
-        "PL": [48],
-    }, index=[Timestamp("2018-01-01 12:00:00")])
+    controller._input_reader = input_reader_mock
+    controller._network = network
 
-    controller._powers = powers
-    controller._prices = prices
+    # Only for cases after 2018
+    if start_year >= 2018:
+        controller._powers = {
+            "IBR": pd.DataFrame({"solar": [200], "hydro pump storage": [-200]},
+                                index=[Timestamp("2018-01-01 12:00:00")]),
+            "FR": pd.DataFrame({"solar": [200], "hydro pump storage": [0]}, index=[Timestamp("2018-01-01 12:00:00")]),
+            "PL": pd.DataFrame({"solar": [200], "hydro pump storage": [0]}, index=[Timestamp("2018-01-01 12:00:00")]),
+        }
+        controller._prices = pd.DataFrame({
+            "IBR": [50],
+            "FR": [48],
+            "PL": [48],
+        }, index=[Timestamp("2018-01-01 12:00:00")])
 
-    # Run method that should return True
-    model_built_true = controller.build_network_model(2018, 2019)
+    # Calling the method with or without an expected warning
+    if expect_warning:
+        with pytest.warns(UserWarning, match="Price data for Poland is incomplete before 2018"):
+            result = controller.build_network_model(start_year, end_year)
+    else:
+        result = controller.build_network_model(start_year, end_year)
 
-    # Verifications
-    assert model_built_false is False
-    assert model_built_true is True
+    assert result is expected_result
+
+
+@patch("src.controller.MAXIMUM_MISSING_STEPS_PER_YEAR", 1)
+def test_build_network_model_missing_steps_raise_warning(controller_opf_setup):
+    controller = controller_opf_setup["controller"]
+
+    network = controller_opf_setup["network"]
+    # powers dataframe has 5 timesteps (3 missing here on two different years)
+    network.datetime_index = pd.to_datetime([
+        Timestamp("2015-01-01 12:00:00"),
+        Timestamp("2016-03-15 10:00:00"),
+    ])
+    controller._network = network
+
+    with pytest.warns(UserWarning, match="cannot be used due to missing data in SPOT price"):
+        result = controller.build_network_model(2015, 2016)
+
+    assert result is False
 
 
 def test_run_opfs(controller_opf_setup):

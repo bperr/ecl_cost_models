@@ -48,7 +48,6 @@ class Network:
         # these timesteps are then used as timesteps for the opfs
         if self._datetime_index is None:
             valid_prices = historical_prices.dropna()
-            skipped_timestep_counter = len(historical_prices.index) - len(valid_prices.index)
             self._datetime_index = valid_prices.index
 
         else:
@@ -56,10 +55,8 @@ class Network:
             idx2 = historical_prices.dropna().index
 
             common_idx = idx1.intersection(idx2)
-            skipped_timesteps = idx1.difference(common_idx)
 
             self._datetime_index = common_idx
-            skipped_timestep_counter = len(skipped_timesteps)
 
         for sector_name in sectors_historical_powers.columns:
             is_controllable = sector_name in controllable_sectors
@@ -67,8 +64,6 @@ class Network:
                 zone.add_storage(sector_name, sectors_historical_powers[sector_name], is_controllable)
             else:
                 zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable)
-
-        return skipped_timestep_counter
 
     def add_interconnection(self, zone_from: Zone, zone_to: Zone, interco_power_rating: float,
                             historical_power_flows: pd.Series):
@@ -114,64 +109,6 @@ class Network:
         for zone_name, zone in self.zones.items():
             zone_price_models = price_models[zone_name]
             zone.set_price_model(zone_price_models)
-
-    @staticmethod
-    def check_price_models(price_models: dict, storages: list[str]):
-        """
-        Validates the integrity and logical consistency of the price models for each sector in all zones.
-
-        The price_models dictionary should have the following structure:
-        price_models[zone][sector] = [cons_full, cons_none, prod_none, prod_full]
-
-        Validation rules:
-        - Sectors that are not storage units must not have consumption prices
-            (i.e. cons_full and cons_none must be None)
-        - Production prices (prod_none and prod_full) must not be None
-        - prod_none must be less than or equal to prod_full
-        - For storage sectors only:
-            - Consumption prices (cons_full and cons_none) must not be None
-            - cons_full must be less than or equal to cons_none
-            - cons_none must be less than or equal to prod_none
-
-        :param price_models: Dictionary containing the price models per zone and sector
-        :param storages: List of sector names that are storages
-
-        :raises ValueError: If any of the logical consistency checks fail
-        """
-
-        for zone, sectors in price_models.items():
-            for sector, prices in sectors.items():
-                cons_full, cons_none, prod_none, prod_full = prices
-
-                # Check production prices
-                if prod_none is None or prod_full is None:
-                    raise ValueError(f"Missing production prices for '{sector}' in zone '{zone}'")
-                if prod_none > prod_full:
-                    raise ValueError(
-                        f"Logical error: Prod_none > Prod_full for '{sector}' in zone '{zone}' "
-                        f"({prod_none} > {prod_full})"
-                    )
-
-                if sector in storages:
-                    # Check consumption prices
-                    if cons_none is None or cons_full is None:
-                        raise ValueError(f"Missing consumption prices for storage sector '{sector}' in zone '{zone}'")
-                    if cons_full > cons_none:
-                        raise ValueError(
-                            f"Logical error: Cons_full > Cons_none for '{sector}' in zone '{zone}' "
-                            f"({cons_full} > {cons_none})"
-                        )
-                    if cons_none > prod_none:
-                        raise ValueError(
-                            f"Logical error: Cons_none > Prod_none for '{sector}' in zone '{zone}' "
-                            f"({cons_none} > {prod_none})"
-                        )
-                else:
-                    # If sector is not storage, it should not have consumption prices
-                    if cons_full is not None or cons_none is not None:
-                        raise ValueError(
-                            f"Sector '{sector}' in zone '{zone}' is not storage but has consumption prices."
-                        )
 
     def run_opf(self, timestep: pd.Timestamp):
         """

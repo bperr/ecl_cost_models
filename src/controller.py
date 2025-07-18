@@ -11,6 +11,7 @@ from src.network import Network
 SIMULATED_POWERS_DIRECTORY_ROOT = 'countries_simulated_powers_by_sector'
 SIMULATED_POWERS_FILE_ROOT = 'simulated_powers_by_sector'
 YEAR_PL_AVAILABLE_DATA = 2018
+MAXIMUM_MISSING_STEPS_PER_YEAR = 100
 
 
 class Controller:
@@ -72,6 +73,7 @@ class Controller:
                 self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
                                        storages=self._storages, controllable_sectors=self._controllable_sectors,
                                        historical_prices=prices[zone])
+
             self._network.build_price_models(self._prices_init[f"{start_year}-{end_year}"])
             self.export_price_models(start_year, end_year, create_file, current_date)
 
@@ -129,6 +131,64 @@ class Controller:
                             mode='w' if create_file else 'a') as writer:
             df.to_excel(writer, index=False, sheet_name=f"{start_year}-{end_year}")
 
+    @staticmethod
+    def check_price_models(price_models: dict, storages: list[str]):
+        """
+        Validates the integrity and logical consistency of the price models for each sector in all zones.
+
+        The price_models dictionary should have the following structure:
+        price_models[zone][sector] = [cons_full, cons_none, prod_none, prod_full]
+
+        Validation rules:
+        - Sectors that are not storage units must not have consumption prices
+            (i.e. cons_full and cons_none must be None)
+        - Production prices (prod_none and prod_full) must not be None
+        - prod_none must be less than or equal to prod_full
+        - For storage sectors only:
+            - Consumption prices (cons_full and cons_none) must not be None
+            - cons_full must be less than or equal to cons_none
+            - cons_none must be less than or equal to prod_none
+
+        :param price_models: Dictionary containing the price models per zone and sector
+        :param storages: List of sector names that are storages
+
+        :raises ValueError: If any of the logical consistency checks fail
+        """
+
+        for zone, sectors in price_models.items():
+            for sector, prices in sectors.items():
+                cons_full, cons_none, prod_none, prod_full = prices
+
+                # Check production prices
+                if prod_none is None or prod_full is None:
+                    raise ValueError(f"Missing production prices for '{sector}' in zone '{zone}'")
+                if prod_none > prod_full:
+                    raise ValueError(
+                        f"Logical error: Prod_none > Prod_full for '{sector}' in zone '{zone}' "
+                        f"({prod_none} > {prod_full})"
+                    )
+
+                if sector in storages:
+                    # Check consumption prices
+                    if cons_none is None or cons_full is None:
+                        raise ValueError(f"Missing consumption prices for storage sector '{sector}' in zone '{zone}'")
+                    if cons_full > cons_none:
+                        raise ValueError(
+                            f"Logical error: Cons_full > Cons_none for '{sector}' in zone '{zone}' "
+                            f"({cons_full} > {cons_none})"
+                        )
+                    if cons_none > prod_none:
+                        raise ValueError(
+                            f"Logical error: Cons_none > Prod_none for '{sector}' in zone '{zone}' "
+                            f"({cons_none} > {prod_none})"
+                        )
+                else:
+                    # If sector is not storage, it should not have consumption prices
+                    if cons_full is not None or cons_none is not None:
+                        raise ValueError(
+                            f"Sector '{sector}' in zone '{zone}' is not storage but has consumption prices."
+                        )
+
     def build_network_model(self, start_year: int, end_year: int):
         """
         Builds the entire energy network model for the specified time period if data is available
@@ -153,7 +213,6 @@ class Controller:
             for zone, df in self._powers.items()
         }
 
-        skipped_timestep_counter = 0
         for zone in self._zones:
             if ('PL' in self._input_reader.get_countries_in_zone(zone)
                     and (start_year < YEAR_PL_AVAILABLE_DATA)):
@@ -162,69 +221,80 @@ class Controller:
                 return False
 
             else:
-                skipped_timestep_counter += self._network.add_zone(zone_name=zone,
-                                                                   sectors_historical_powers=powers[zone],
-                                                                   storages=self._storages,
-                                                                   controllable_sectors=self._controllable_sectors,
-                                                                   historical_prices=prices[zone])
+                self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
+                                       storages=self._storages, controllable_sectors=self._controllable_sectors,
+                                       historical_prices=prices[zone])
 
-        print(f"Skipped {skipped_timestep_counter} timesteps for time period '{start_year}-{end_year}' "
+        # We suppose that the production data is complete for all zones (8784 hours/year for leap years, 8760 otherwise)
+        missing_steps = len(next(iter(powers.values()))) - len(self._network.datetime_index)
+
+        print(f"Skipped {missing_steps} timesteps for time period '{start_year}-{end_year}' "
               f"because of missing data (prices)")
 
-        price_models = self._input_reader.read_price_models()[f"{start_year}-{end_year}"]
+        missing_steps_limit = MAXIMUM_MISSING_STEPS_PER_YEAR * (end_year - start_year + 1)
 
-        # check that data from price_models excel is consistent
-        self._network.check_price_models(price_models, self._storages)
+        if missing_steps > missing_steps_limit:
+            warnings.warn(
+                f"More than {missing_steps_limit} timesteps cannot be used due to missing data in SPOT price"
+                f"data for this time period. The simulation for {start_year}-{end_year} cannot be performed"
+            )
+            return False
 
-        # set price models for each sector of each zone
-        self._network.set_price_model(price_models)
+        else:
+            price_models = self._input_reader.read_price_models()[f"{start_year}-{end_year}"]
 
-        # ------- add interconnections -------
-        # power_rating excel is used to navigate through the interconnections
-        for index, row in self._interco_power_ratings.iterrows():
-            zone_from = row['zone_from']
-            zone_to = row['zone_to']
-            power_rating = row['Capacity (MW)']
+            # check that data from price_models excel is consistent
+            self.check_price_models(price_models, self._storages)
+
+            # set price models for each sector of each zone
+            self._network.set_price_model(price_models)
+
+            # ------- add interconnections -------
+            # power_rating excel is used to navigate through the interconnections
+            for index, row in self._interco_power_ratings.iterrows():
+                zone_from = row['zone_from']
+                zone_to = row['zone_to']
+                power_rating = row['Capacity (MW)']
 
             # Check if the interconnection between the two zones already exist to avoid all the calculation if it does
-            interco_exists = False
+                interco_exists = False
 
-            for interconnection in self._network.interconnections:
-                if ((interconnection.zone_from.name == zone_from and interconnection.zone_to.name == zone_to) or
-                        (interconnection.zone_from.name == zone_to and interconnection.zone_to.name == zone_from)):
-                    interco_exists = True
-                    break
+                for interconnection in self._network.interconnections:
+                    if ((interconnection.zone_from.name == zone_from and interconnection.zone_to.name == zone_to) or
+                            (interconnection.zone_from.name == zone_to and interconnection.zone_to.name == zone_from)):
+                        interco_exists = True
+                        break
 
-            if interco_exists:
-                continue
+                if interco_exists:
+                    continue
 
-            # If new interconnection : creation of the power series for this interconnection
-            flow_forward = self._interco_powers[
-                (self._interco_powers['zone_from'] == zone_from) & (self._interco_powers['zone_to'] == zone_to)
-                ].set_index("Time")["Power (MW)"]
+                # If new interconnection : creation of the power series for this interconnection
+                flow_forward = self._interco_powers[
+                    (self._interco_powers['zone_from'] == zone_from) & (self._interco_powers['zone_to'] == zone_to)
+                    ].set_index("Time")["Power (MW)"]
 
-            flow_backward = self._interco_powers[
-                (self._interco_powers['zone_from'] == zone_to) & (self._interco_powers['zone_to'] == zone_from)
-                ].set_index("Time")["Power (MW)"]
+                flow_backward = self._interco_powers[
+                    (self._interco_powers['zone_from'] == zone_to) & (self._interco_powers['zone_to'] == zone_from)
+                    ].set_index("Time")["Power (MW)"]
 
-            # Net power : forward - backward
-            interco_powers = flow_forward.sub(flow_backward, fill_value=0).sort_index()
+                # Net power : forward - backward
+                interco_powers = flow_forward.sub(flow_backward, fill_value=0).sort_index()
 
-            self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
-                                              power_rating, interco_powers)
+                self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
+                                                  power_rating, interco_powers)
 
-        # ------- add loads -------
-        # Demand = production + net import
-        for zone_name, zone in self._network.zones.items():
-            net_import = 0
-            for interconnection in zone.interconnections:
-                if interconnection.zone_from.name == zone_name:
-                    net_import -= interconnection.historical_powers
-                elif interconnection.zone_to.name == zone_name:
-                    net_import += interconnection.historical_powers
-            zone.compute_demand(net_import)
+            # ------- add loads -------
+            # Demand = production + net import
+            for zone_name, zone in self._network.zones.items():
+                net_import = 0
+                for interconnection in zone.interconnections:
+                    if interconnection.zone_from.name == zone_name:
+                        net_import -= interconnection.historical_powers
+                    elif interconnection.zone_to.name == zone_name:
+                        net_import += interconnection.historical_powers
+                zone.compute_demand(net_import)
 
-        return True
+            return True
 
     def run_opfs(self):
         """

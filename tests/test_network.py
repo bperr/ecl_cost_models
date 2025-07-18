@@ -60,11 +60,11 @@ def test_add_zone(network_setup):
     network = Network()
 
     # Add zone
-    skipped_timestep_counter = network.add_zone(zone_name="FR",
-                                                sectors_historical_powers=setup["sectors_historical_powers"],
-                                                storages=setup["storages"],
-                                                controllable_sectors=setup["controllable_sectors"],
-                                                historical_prices=setup["historical_prices"])
+    network.add_zone(zone_name="FR",
+                     sectors_historical_powers=setup["sectors_historical_powers"],
+                     storages=setup["storages"],
+                     controllable_sectors=setup["controllable_sectors"],
+                     historical_prices=setup["historical_prices"])
 
     # Check that Zone has been created with the correct parameters
     setup["zone_cls"].assert_called_once_with("FR", setup["historical_prices"])
@@ -79,7 +79,6 @@ def test_add_zone(network_setup):
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()
     pd.testing.assert_index_equal(network._datetime_index, setup["sectors_historical_powers"].index)
-    assert skipped_timestep_counter == 0
 
 
 def test_add_zone_updates_datetime_index(network_setup):
@@ -107,10 +106,10 @@ def test_add_zone_updates_datetime_index(network_setup):
         "hydro pump storage": [-50, -60, 40, -20, 60, -70, 80, -10, 30],
     }, index=timestamps)
 
-    skipped_timestep_counter = network.add_zone(zone_name="FR", sectors_historical_powers=sectors_historical_powers,
-                                                storages=setup["storages"],
-                                                controllable_sectors=setup["controllable_sectors"],
-                                                historical_prices=historical_prices)
+    network.add_zone(zone_name="FR", sectors_historical_powers=sectors_historical_powers,
+                     storages=setup["storages"],
+                     controllable_sectors=setup["controllable_sectors"],
+                     historical_prices=historical_prices)
 
     # Check that Zone has been created with the correct parameters
     setup["zone_cls"].assert_called_once_with("FR", historical_prices)
@@ -130,7 +129,6 @@ def test_add_zone_updates_datetime_index(network_setup):
         Timestamp("15/04/2015  09:00:00"),
     ])
     pd.testing.assert_index_equal(network._datetime_index, expected_index)
-    assert skipped_timestep_counter == 7
 
 
 def test_build_price_models(network_setup):
@@ -150,54 +148,6 @@ def test_build_price_models_raises_when_no_zones():
     network = Network()
     with pytest.raises(ValueError, match="No zones available to build price models."):
         network.build_price_models((0, 100, 0, 100, 10))
-
-
-def test_check_price_models_valid():
-    price_models = {
-        "FR": {
-            "solar": [None, None, 50, 100],  # Non-storage sector with valid production prices
-            # Storage sector with valid consumption prices (cons_full <= cons_none & cons_none <= prod_none)
-            "battery": [10, 20, 40, 50]
-        }
-    }
-
-    storages = ["battery"]
-
-    # Should not raise
-    Network.check_price_models(price_models, storages)
-
-
-@pytest.mark.parametrize("zone, sector, prices, storages, expected_error", [
-    # Not None cons prices for solar sector (not storage)
-    ("FR", "solar", [20, 30, 50, 60], [], "Sector 'solar' in zone 'FR' is not storage but has consumption prices"),
-    # Production price p0 > p100
-    ("FR", "solar", [None, None, 100, 90], [], "Logical error: Prod_none > Prod_full for 'solar' in zone 'FR'"),
-    # Consumption price c100 > c0
-    ("FR", "battery", [30, 20, 50, 60], ["battery"],
-     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'"),
-    # prod_none is None
-    ("FR", "solar", [None, None, None, 100], [], "Missing production prices for 'solar' in zone 'FR"),
-    # prod_full is None
-    ("FR", "solar", [None, None, 10, None], [], "Missing production prices for 'solar' in zone 'FR"),
-    # Storage: cons_full is None
-    ("FR", "battery", [None, 40, 10, 20], ["battery"],
-     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
-    # Storage: cons_none is None
-    ("FR", "battery", [30, None, 10, 20], ["battery"],
-     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
-    # Storage: cons_none > prod_none
-    ("FR", "battery", [30, 50, 40, 60], ["battery"],
-     r"Logical error: Cons_none > Prod_none for 'battery' in zone 'FR' \(50 > 40\)")
-])
-def test_check_price_models_raises_errors(zone, sector, prices, storages, expected_error):
-    price_models = {
-        zone: {
-            sector: prices
-        }
-    }
-
-    with pytest.raises(ValueError, match=expected_error):
-        Network.check_price_models(price_models, storages)
 
 
 def test_set_price_model(network_setup):
