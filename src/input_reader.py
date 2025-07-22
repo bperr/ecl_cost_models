@@ -3,39 +3,43 @@ from pathlib import Path
 
 import pandas as pd
 
-PROD_FOLDER_NAME = "Production par pays et par filière 2015-2019"
-PRICES_FOLDER_NAME = "Prix spot par an et par zone 2015-2019"
+PROD_FOLDER_NAME = "countries_power_production_by_sector_2015_2019"
+PRICES_FOLDER_NAME = "annual_spot_prices_by_country_2015_2019"
 OUTPUT_EXCEL_NAME = "Output_prices.xlsx"
+MAP_TO_ALPHA2_FILE_NAME = "eu_countries_alpha2_codes.xlsx"
+INTERCO_FOLDER_NAME = "interconnections_power_ratings_and_powers_2015_2019"
+INTERCO_POWER_RATINGS_FILE_NAME = "interconnections_power_ratings.xlsx"
+INTERCO_POWERS_FILE_NAME = "interconnections_powers_transferred_2015_2019.xlsx"
 
 
 class InputReader:
     """
-        A utility class to load, validate, and organize input data for energy price modelling
+    A utility class to load, validate, and organize input data for energy price modelling
 
-        This class centralizes all logic related to:
-        - Reading user-defined configurations (zones, sector groups, storage types, etc.)
-        - Loading historical production and price data from a structured database
-        - Structuring the data for downstream modeling tasks
+    This class centralizes all logic related to:
+    - Reading user-defined configurations (zones, sector groups, storage types, etc.)
+    - Loading historical production and price data from a structured database
+    - Structuring the data for downstream modeling tasks
 
-        It handles consistency checks, grouping, and formatting of data, providing the
-        rest of the application with ready-to-use, clean input structures.
+    It handles consistency checks, grouping, and formatting of data, providing the
+    rest of the application with ready-to-use, clean input structures.
     """
 
     def __init__(self, work_dir: Path, db_dir: Path):
         """
-            Initializes the InputReader instance by setting the working and database directories.
+        Initializes the InputReader instance by setting the working and database directories.
 
 
-            :param work_dir: Path to the working directory where user-defined Excel file 'User_inputs.xlsx' is stored.
-            :param db_dir: Path to the database directory containing historical production and price data organized by
-                country and year.
+        :param work_dir: Path to the working directory where user-defined Excel file 'User_inputs.xlsx' is stored.
+        :param db_dir: Path to the database directory containing historical production and price data organized by
+            country and year.
 
-            The constructor does not load any data immediately. Data is loaded and processed
-            only when the corresponding methods (`read_user_inputs`, `read_db_powers`, etc.) are called.
+        The constructor does not load any data immediately. Data is loaded and processed
+        only when the corresponding methods (`read_user_inputs`, `read_db_powers`, etc.) are called.
 
-            Internal attributes are initialized to store:
-            - User-defined configurations (zones, sector groups, storage sectors, etc.)
-            - Historical power and price data
+        Internal attributes are initialized to store:
+        - User-defined configurations (zones, sector groups, storage sectors, etc.)
+        - Historical power and price data
         """
 
         self._work_dir: Path = work_dir
@@ -53,9 +57,16 @@ class InputReader:
         self._historical_powers: dict[str, pd.DataFrame] = dict()
         self._historical_prices = pd.DataFrame()
 
+        # Updated in self._read_interco_power_ratings & self.read_interco_powers
+        self._interco_power_ratings = pd.DataFrame()
+        self._interco_powers = pd.DataFrame()
+
     @property
     def work_dir(self):
         return self._work_dir
+
+    def get_countries_in_zone(self, zone_name: str) -> list[str]:
+        return self._zones[zone_name]
 
     def read_user_inputs(self):
         """
@@ -219,6 +230,9 @@ class InputReader:
             df.set_index(df.columns[0],
                          inplace=True)  # First column (time) as index and Column name is also kept as index name
 
+            # keep the first value of duplicated timesteps (October time change)
+            df = df[~df.index.duplicated(keep='first')]
+
             country_power_dfs[country] = df
 
         # Group by zone
@@ -314,15 +328,17 @@ class InputReader:
                 all_dfs.append(zone_df)  # Storing all zones data in the all_dfs dataframe (for one year)
 
         # Storing all studied years data in the main dataframe
-        self._historical_prices = pd.concat(all_dfs).sort_index()
+        historical_prices = pd.concat(all_dfs).sort_index()
+
+        # keep the first value of duplicated timesteps (October time change)
+        self._historical_prices = historical_prices[~historical_prices.index.duplicated(keep='first')]
 
         return self._historical_prices
 
     def read_price_models(self) -> dict:
-        # FIXME : change the whole function to recreate the network class based on the excel
-        #  (instead of nested dictionary) - will be done for OPF
         """
-        Reads computed price results from 'Output_prices.xlsx' and reconstructs a nested dictionary.
+        Reads computed price results from 'Output_prices.xlsx' of the folder named "results" or the last created results
+        folder and reconstructs a nested dictionary.
 
         The results dictionary has the following structure:
         results[year][zone][sector] = [cons_full, cons_none, prod_none, prod_full]
@@ -339,9 +355,18 @@ class InputReader:
             dict: Nested dictionary containing computed prices per year, zone, and sector.
         """
         results = {}
-        # TODO : change the folder name, only results otherwise take the last created one
 
-        folder_path = self._work_dir / "results"
+        # uses the folder "results" if it exists and the last created folder starting with "results" if not
+        exact_results = self._work_dir / "results"
+
+        if exact_results.exists() and exact_results.is_dir():
+            folder_path = exact_results
+        else:
+            results_dirs = list(self._work_dir.glob('results*'))
+            folder_path = max(results_dirs, key=lambda d: d.name)
+
+        print(f"directory used for price models : {folder_path}")
+
         file_path = folder_path / OUTPUT_EXCEL_NAME
         sheet_names = pd.ExcelFile(file_path).sheet_names
 
@@ -406,3 +431,150 @@ class InputReader:
                                     f"'{sector}' in zone '{zone}' ({cons_max} > {cons_min})"
                                 )
         return results
+
+    # ------ Interconnections for OPF ------- #
+    def map_full_name_to_alpha2_code(self) -> dict[str, str]:
+        """
+        Loads an Excel file containing the list of EU countries names and their Alpha-2 codes,
+        then creates a dictionary mapping each country name to its corresponding Alpha-2 code.
+
+        :return dict[str, str]:
+            A dictionary where the keys are country names (str) and the values are the corresponding Alpha-2 codes (str)
+        """
+
+        # Load country name conversion file
+        country_code_conversion_df = pd.read_excel(self._db_dir / MAP_TO_ALPHA2_FILE_NAME)
+
+        # Create a mapping dictionary from country name to Alpha-2 code
+        country_to_alpha2 = dict(zip(country_code_conversion_df["Country"], country_code_conversion_df["Alpha-2"]))
+
+        return country_to_alpha2
+
+    def read_interco_power_ratings(self):
+        """
+        Loads and transforms interconnection power ratings data between zones from source file.
+        - Each interconnection capacity between two countries is assumed to be bidirectional
+        (same in both directions).
+        - Intra-zone connections (between countries in the same zone) are excluded.
+        - The total capacity between two zones is computed as the sum of all interconnections between
+        their respective countries
+
+        :return: DataFrame with columns "zone_from", "zone_to" and "Capacity (MW)".
+            """
+        # Load data
+        df_interco_capacity_raw = pd.read_excel(self._db_dir / INTERCO_FOLDER_NAME / INTERCO_POWER_RATINGS_FILE_NAME)
+
+        # Call function map_full_name_to_alpha2_code which returns a conversion file
+        country_to_alpha2 = self.map_full_name_to_alpha2_code()
+
+        # Replace country names in the dataframe with their Alpha-2 codes
+        df_interco_capacity_renamed = df_interco_capacity_raw.replace(
+            {"Country_1": country_to_alpha2, "Country_2": country_to_alpha2})
+
+        # Renaming columns
+        df_interco_capacity_renamed = df_interco_capacity_renamed.rename(
+            columns={"Country_1": "country_from", "Country_2": "country_to"})
+
+        # Creating the reversed DataFrame and concatenate both original and reversed data : to have for one
+        # interconnection, two lines in the dataframe with each country once in country_from and once in country_to.
+        df_reversed = df_interco_capacity_renamed.rename(
+            columns={"country_from": "country_to", "country_to": "country_from"})
+        df_final = pd.concat([df_interco_capacity_renamed, df_reversed], ignore_index=True)
+
+        # Create country to zone mapping
+        country_to_zone = {}
+        for zone, countries in self._zones.items():
+            for country in countries:
+                country_to_zone[country] = zone
+
+        # Map zones
+        df_final["zone_from"] = df_final["country_from"].map(country_to_zone)
+        df_final["zone_to"] = df_final["country_to"].map(country_to_zone)
+
+        # Identify unmapped countries
+        unknown_countries_from = df_final[df_final["zone_from"].isna()]["country_from"]
+        unknown_countries_to = df_final[df_final["zone_to"].isna()]["country_to"]
+        unknown_countries = set(unknown_countries_from).union(set(unknown_countries_to))
+
+        if unknown_countries:
+            warnings.warn(f"Countries not mapped to any zone: {unknown_countries}")
+
+        # Delete lines with an undefined zone (country not in the values of _zones)
+        df_final = df_final.dropna(subset=['zone_from', 'zone_to'])
+        df_final = df_final[df_final["zone_from"] != df_final["zone_to"]]  # Remove intra-zone flows
+
+        # Identify countries with no interconnection data
+        countries_in_data = set(df_final["country_from"]).union(set(df_final["country_to"]))
+        countries_in_zones = set(country_to_zone.keys())
+        missing_countries = countries_in_zones - countries_in_data
+
+        if len(missing_countries) != 0:
+            warnings.warn(
+                f"The following countries are defined in zones but have no interconnection data: {missing_countries}")
+
+        # Aggregate capacities by zone pairs
+        self._interco_power_ratings = df_final.groupby(["zone_from", "zone_to"], as_index=False)["Capacity (MW)"].sum()
+
+        return self._interco_power_ratings
+
+    def read_interco_powers(self):
+        """
+        Loads, cleans, and aggregates interconnection power flow data for a given year from the source file.
+        - Only non-zero power flows are retained.
+        - Intra-zone flows (exchanges within the same zone) are excluded.
+        - Power flows are aggregated by timestamp and zone pairs.
+
+        :return: DataFrame with columns "Time", "Power (MW)", "zone_from", and "zone_to".
+        """
+
+        # Verify if the sheet exists
+        file_path_data = self._db_dir / INTERCO_FOLDER_NAME / INTERCO_POWERS_FILE_NAME
+        xls = pd.ExcelFile(file_path_data)
+
+        all_years_data = []
+
+        for sheet_name in xls.sheet_names:
+            # Load data from the specified sheet
+            df_interco_raw = pd.read_excel(file_path_data, sheet_name=sheet_name)
+
+            # keep the first value of duplicated timesteps (October time change)
+            df_interco_raw = df_interco_raw.drop_duplicates(subset="Time", keep="first")
+
+            # --- Reshape data to good format ---
+            # Transform the dataframe into a 3 columns dataframe: "Time", "direction" and "Power (MW)"
+            reshaped_df = df_interco_raw.set_index("Time").stack().reset_index(name="Power (MW)").rename(
+                columns={'level_1': 'direction'})
+            # Creates two columns "source" and "target" by splitting column "direction"
+            reshaped_df[["country_from", "country_to"]] = reshaped_df["direction"].str.split(" --> ", n=1, expand=True)
+            # Remove column direction
+            reshaped_df.drop(columns="direction", inplace=True)
+            df_interco = reshaped_df[reshaped_df["Power (MW)"] != 0]  # Avoid interco with 0 Power exchanged
+
+            # Replace country names in the dataframe with their Alpha-2 codes
+            country_to_alpha2 = self.map_full_name_to_alpha2_code()
+            df_interco_renamed = df_interco.replace(
+                {"country_from": country_to_alpha2, "country_to": country_to_alpha2})
+
+            # Build country to zone mapping
+            country_to_zone = {}
+            for zone, countries in self._zones.items():
+                for country in countries:
+                    country_to_zone[country] = zone
+
+            # Map countries to zones
+            df_interco_renamed["zone_from"] = df_interco_renamed["country_from"].map(country_to_zone)
+            df_interco_renamed["zone_to"] = df_interco_renamed["country_to"].map(country_to_zone)
+
+            # Remove intra-zone flows
+            df_interco_filtered = df_interco_renamed[df_interco_renamed["zone_from"] != df_interco_renamed["zone_to"]]
+
+            # Aggregate power by time and zone pairs
+            df_grouped = df_interco_filtered.groupby(["Time", "zone_from", "zone_to"], as_index=False)[
+                "Power (MW)"].sum()
+            all_years_data.append(df_grouped)
+
+        if len(all_years_data) == 0:
+            raise ValueError(f"No valid sheets found in '{file_path_data}'.")
+
+        self._interco_powers = pd.concat(all_years_data, ignore_index=True).sort_values("Time")
+        return self._interco_powers

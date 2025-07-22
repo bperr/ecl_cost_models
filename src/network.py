@@ -6,19 +6,28 @@ from src.zone import Zone
 
 class Network:
     """
-        Represents an energy network composed of zones (themselves composed of sectors) and interconnections.
+    Represents an energy network composed of zones (themselves composed of sectors) and interconnections.
 
-        This class manages the structure of the network by adding all the required zones and sectors
-        (including storages) and interconnections, and includes tools to build and validate price and power models.
+    This class manages the structure of the network by adding all the required zones and sectors
+    (including storages) and interconnections, and includes tools to build and validate price and power models.
     """
 
     def __init__(self):
-        self._zones: list[Zone] = list()
+        self._zones: dict[str, Zone] = dict()
         self._interconnections: list[Interconnection] = list()
+        self._datetime_index: list[pd.Timestamp] | None = None  # Updated in add_zone
 
     @property
     def zones(self):
         return self._zones
+
+    @property
+    def interconnections(self):
+        return self._interconnections
+
+    @property
+    def datetime_index(self):
+        return self._datetime_index
 
     def add_zone(self, zone_name: str, sectors_historical_powers: pd.DataFrame, storages: list[str],
                  controllable_sectors: list[str], historical_prices: pd.Series):
@@ -33,7 +42,21 @@ class Network:
         :param historical_prices: Historical prices for the zone
         """
         zone = Zone(zone_name, historical_prices)
-        self._zones.append(zone)
+        self._zones[zone_name] = zone
+
+        # update the attribute datetime_index with the timesteps (indexes) of the first zone's historical power data
+        # these timesteps are then used as timesteps for the opfs
+        if self._datetime_index is None:
+            valid_prices = historical_prices.dropna()
+            self._datetime_index = valid_prices.index
+
+        else:
+            idx1 = self._datetime_index
+            idx2 = historical_prices.dropna().index
+
+            common_idx = idx1.intersection(idx2)
+
+            self._datetime_index = common_idx
 
         for sector_name in sectors_historical_powers.columns:
             is_controllable = sector_name in controllable_sectors
@@ -42,72 +65,80 @@ class Network:
             else:
                 zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable)
 
-    def add_interconnection(self):
+    def add_interconnection(self, zone_from: Zone, zone_to: Zone, interco_power_rating: float,
+                            historical_power_flows: pd.Series):
         """
-            Adds an interconnection between two zones
+        Adds an interconnection between two zones
 
-            Note:
-                Method currently not implemented (will be for OPF).
+        :param zone_from: Zone object representing the "exporting" zone
+        :param zone_to: Zone object representing the "importing" zone
+        :param interco_power_rating: The interconnection power rating between the two zones
+        :param historical_power_flows: pd.Series containing historical power flows between the two zones per hour
+        (positive when power is transferred from zone "from" to zone "to" and negative if power is transferred in
+        the opposite direction)
         """
-        pass
+        interconnection = Interconnection(zone_from, zone_to, interco_power_rating, historical_power_flows)
+        self._interconnections.append(interconnection)
+
+        # interconnection is added to both concerned zones interconnections list
+        zone_to.add_interconnection(interconnection)
+        zone_from.add_interconnection(interconnection)
 
     def build_price_models(self, prices_init: tuple):
         """
-            Builds price models for all sectors of all the zones in the network.
+        Builds price models for all sectors of all the zones in the network.
 
-            :param prices_init: Prices boundaries to make the initialisation of prices
+        :param prices_init: Prices boundaries to make the initialisation of prices
 
-            :raise:
-                ValueError: If no zones have been added to the network.
+        :raise:
+            ValueError: If no zones have been added to the network.
         """
 
         if len(self._zones) == 0:
             raise ValueError("No zones available to build price models.")
-        for zone in self._zones:
+        for zone in self._zones.values():
             zone.build_price_model(prices_init)
 
-    def check_price_models(self):
-        # FIXME : could be changed depending on the input reader read_price_model method - will be done for OPF
+    def set_price_model(self, price_models: dict):
         """
-            Validates the integrity of the price models for each sector in all zones
+        Set price models for all sectors of all the zones in the network.
 
-            :raise:
-                ValueError: If prices are missing or incorrectly defined
+        :param price_models: embedded dictionary with the following format
+            price_models[zone][sector] = [cons_full, cons_none, prod_none, prod_full]
         """
-        # To add : c_price_no_power <= p_price_no_power --> "Consumption price c0 must be lower than"
-        # f"production price p0 for {sector.name} in '{zone.name}'"
-        for zone in self._zones:
-            for sector in zone.sectors:
-                prices = sector.price_model
+        for zone_name, zone in self.zones.items():
+            zone_price_models = price_models[zone_name]
+            zone.set_price_model(zone_price_models)
 
-                if len(prices) == 0:
-                    raise ValueError(f"Prices values are missing for {sector.name} in '{zone._name}'")
+    def run_opf(self, timestep: pd.Timestamp):
+        """
+        Runs the Optimal Power Flow (OPF) algorithm on the network
 
-                if sector.is_load:
-                    c_price_no_power, c_price_full_power = prices
-                    if c_price_full_power > c_price_no_power:
-                        raise ValueError(
-                            f"Consumption price c100 must be lower than c0 for {sector.name} in '{zone._name}'")
-                else:
-                    p_price_no_power, p_price_full_power = prices
-                    if p_price_no_power > p_price_full_power:
-                        raise ValueError(
-                            f"Production price p0 must be lower than p100 for {sector.name} in '{zone._name}'")
+        Note:
+            Method currently not implemented
+        """
+        # converged = False
+        n_full_iter = 100
+        for i in range(n_full_iter):
+            # converged = True
+            for line in self._interconnections:
+                cost_change = line.optimize_export(timestep)
+                if cost_change < 0:
+                    pass
+                    # converged = False
+
+        for zone in self.zones.values():
+            zone.store_simulated_power(timestep)
+
+        # Update each sector._simulated_powers
+        # Update each interconnection._simulated_powers
+        raise NotImplementedError
 
     def check_power_models(self):
         """
-            Validates power models for each sector or interconnection
+        Validates power models for each sector or interconnection
 
-            Note:
-                Method currently not implemented (will be for OPF).
-        """
-        pass
-
-    def run_OPF(self):
-        """
-            Runs the Optimal Power Flow (OPF) algorithm on the network
-
-            Note:
-                Method currently not implemented.
+        Note:
+            Method currently not implemented (will be for OPF).
         """
         pass

@@ -6,7 +6,9 @@ import pandas as pd
 import pytest
 from pandas import Timestamp
 
+from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME, INTERCO_POWERS_FILE_NAME
 from src.input_reader import InputReader
+from src.input_reader import MAP_TO_ALPHA2_FILE_NAME
 
 
 def set_parse_side_effect(dataframes: dict[str, pd.DataFrame], mocks: dict):
@@ -70,6 +72,12 @@ def setup():
     }
 
     patch.stopall()
+
+
+def test_get_countries_in_zone(setup):
+    input_reader = setup["data"]["reader"]
+    input_reader._zones = {'IBR': ['ES', 'PT']}
+    assert input_reader.get_countries_in_zone('IBR') == ['ES', 'PT']
 
 
 def test_read_user_inputs_raise_error_if_file_does_not_exist(setup):
@@ -277,7 +285,7 @@ def prod_setup():
 
 def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setup):
     # Set inputs
-    fake_folder_path = prod_setup["fake directories"]["fake db dir"] / "Production par pays et par filière 2015-2019"
+    fake_folder_path = prod_setup["fake directories"]["fake db dir"] / "countries_power_production_by_sector_2015_2019"
 
     reader = prod_setup["reader"]
     reader._years = [(2015, 2015)]
@@ -378,6 +386,48 @@ def test_load_database_prod_user_creates_expected_dictionary_structure(prod_setu
         pd.testing.assert_frame_equal(historical_power[zone], expected_value[zone])
 
 
+def test_keep_first_value_powers_if_duplicated_timestep(prod_setup):
+    fr_prod_df = pd.DataFrame(columns=["Début de l'heure", "biomass_MW", "fossil_gas_MW"],
+                              data=[
+                                  [Timestamp("01/01/2015  12:00:00"), 1200, 3000],
+                                  [Timestamp("01/01/2015  13:00:00"), 1200, 3000],
+                                  [Timestamp("01/01/2015  14:00:00"), 1200, 3000],
+                                  [Timestamp("01/01/2015  14:00:00"), 1100, 3100],  # duplicated timestep
+                              ])
+
+    reader = prod_setup["reader"]
+    reader._years = [(2015, 2015)]
+    reader._prices_init = {"2015-2015": (0, 120, 0, 120, 12)}
+    reader._zones = {"FR": ["FR"]}
+    reader._sectors_group = {'biomass': {'biomass'},
+                             'fossil_gas': {'fossil_gas'}
+                             }
+
+    # Run function
+    with patch("pandas.read_excel", return_value=fr_prod_df):
+        historical_power = reader.read_db_powers()
+
+    expected_value = {
+        # Only FR and DE
+        'FR': pd.DataFrame({
+            'biomass': {
+                # Only 2015 time steps
+                Timestamp("01/01/2015  12:00:00"): 1200,
+                Timestamp("01/01/2015  13:00:00"): 1200,
+                Timestamp("01/01/2015  14:00:00"): 1200
+            },
+            'fossil_gas': {
+                # Only 2015 time steps
+                Timestamp("01/01/2015  12:00:00"): 3000,
+                Timestamp("01/01/2015  13:00:00"): 3000,
+                Timestamp("01/01/2015  14:00:00"): 3000
+            }
+        })}
+    expected_value['FR'].index.name = 'Début de l\'heure'
+
+    pd.testing.assert_frame_equal(historical_power['FR'], expected_value['FR'])
+
+
 # --- Prices --- #
 
 @pytest.fixture(scope='function')
@@ -445,7 +495,7 @@ def spot_setup():
 
 def test_load_database_price_user_creates_expected_dataframe_structure(spot_setup):
     # Set inputs
-    fake_folder_path = spot_setup["fake directories"]["fake db dir"] / "Prix spot par an et par zone 2015-2019"
+    fake_folder_path = spot_setup["fake directories"]["fake db dir"] / "annual_spot_prices_by_country_2015_2019"
 
     reader = spot_setup['reader']
     reader._years = [(2015, 2016)]  # Get data from 2015 to 2016
@@ -498,6 +548,45 @@ def test_load_database_price_user_creates_expected_dataframe_structure(spot_setu
             Timestamp("01/01/2016  13:00:00"): 22.5,
             Timestamp("01/01/2016  14:00:00"): 15.
         }
+    })
+
+    pd.testing.assert_frame_equal(historical_prices, expected_value)
+
+
+def test_keep_first_value_prices_if_duplicated_timestep(spot_setup):
+    reader = spot_setup['reader']
+    reader._years = [(2015, 2015)]  # Get data from 2015 to 2016
+    reader._prices_init = {"2015-2015": (0, 120, 0, 120, 12)}
+
+    reader._zones = {"BE": ["BE"], "FR": ["FR"]}
+
+    spot_2015_df = pd.DataFrame(
+        columns=["BE", "FR"],
+        index=[Timestamp("01/01/2015  12:00:00"), Timestamp("01/01/2015  13:00:00"), Timestamp("01/01/2015  14:00:00"),
+               Timestamp("01/01/2015  14:00:00")],
+        data=[
+            [30, 10],
+            [35, 10],
+            [30, 20],
+            [20, 30]
+        ]
+    )
+
+    # Run function
+    with patch("pandas.read_excel", return_value=spot_2015_df):
+        historical_prices = reader.read_db_prices()
+
+    expected_value = pd.DataFrame({
+        'BE': {
+            Timestamp("01/01/2015  12:00:00"): 30.,
+            Timestamp("01/01/2015  13:00:00"): 35.,
+            Timestamp("01/01/2015  14:00:00"): 30.,
+        },
+        'FR': {
+            Timestamp("01/01/2015  12:00:00"): 10.,
+            Timestamp("01/01/2015  13:00:00"): 10.,
+            Timestamp("01/01/2015  14:00:00"): 20.,
+        },
     })
 
     pd.testing.assert_frame_equal(historical_prices, expected_value)
@@ -562,11 +651,17 @@ def pmodel_setup():
     patch.stopall()
 
 
-def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_setup):
+def test_read_price_models_user_creates_expected_dictionary_structure(tmp_path, pmodel_setup):
     # Set inputs
-    fake_folder_path = pmodel_setup["fake directories"]["fake work dir"] / "results"
+    fake_work_dir = tmp_path
+    (tmp_path / "results 20250706_12h00").mkdir()
+    (tmp_path / "results 20250707_13h40").mkdir()
+    (tmp_path / "results 20250705_09h30").mkdir()
+
+    fake_folder_path = fake_work_dir / "results 20250707_13h40"  # last one created
 
     reader = pmodel_setup["reader"]
+    reader._work_dir = fake_work_dir
 
     reader._years = [(2015, 2016)]  # Get data from 2015 to 2016
     reader._prices_init = {"2015-2016": (0, 120, 0, 120, 12)}
@@ -621,9 +716,12 @@ def test_load_price_models_user_creates_expected_dictionary_structure(pmodel_set
     assert results == expected
 
 
-def test_read_price_models_error_if_consumption_for_non_storage(pmodel_setup):
+def test_read_price_models_error_if_consumption_for_non_storage(tmp_path, pmodel_setup):
     reader = pmodel_setup["reader"]
+    reader._work_dir = tmp_path
     reader._storages = ["battery"]
+
+    (tmp_path / "results").mkdir()
 
     df_invalid = pd.DataFrame({
         "Zone": ["BE"],
@@ -640,9 +738,12 @@ def test_read_price_models_error_if_consumption_for_non_storage(pmodel_setup):
             reader.read_price_models()
 
 
-def test_read_price_models_raises_if_prod_min_gt_max(pmodel_setup):
+def test_read_price_models_raises_if_prod_min_gt_max(tmp_path, pmodel_setup):
     reader = pmodel_setup["reader"]
+    reader._work_dir = tmp_path
     reader._storages = ["battery"]
+
+    (tmp_path / "results").mkdir()
 
     df_invalid = pd.DataFrame({
         "Zone": ["BE", "BE"],
@@ -659,9 +760,12 @@ def test_read_price_models_raises_if_prod_min_gt_max(pmodel_setup):
             reader.read_price_models()
 
 
-def test_read_price_models_raises_if_cons_max_gt_min(pmodel_setup):
+def test_read_price_models_raises_if_cons_max_gt_min(tmp_path, pmodel_setup):
     reader = pmodel_setup["reader"]
+    reader._work_dir = tmp_path
     reader._storages = ["battery"]
+
+    (tmp_path / "results").mkdir()
 
     df_invalid = pd.DataFrame({
         "Zone": ["BE", "BE"],
@@ -676,3 +780,152 @@ def test_read_price_models_raises_if_cons_max_gt_min(pmodel_setup):
             patch("pandas.read_excel", return_value=df_invalid):
         with pytest.raises(ValueError, match=r"Cons_max > Cons_min"):
             reader.read_price_models()
+
+
+def test_map_full_name_to_alpha2_code(setup):
+    # Preparation of simulated data
+    mock_df = pd.DataFrame({
+        'Country': ['France', 'Germany', 'Italy'],
+        'Alpha-2': ['FR', 'DE', 'IT']
+    })
+
+    # Instantiate the object
+    db_dir = setup["data"]["fake directories"]["fake db dir"]
+    work_dir = setup["data"]["fake directories"]["fake work dir"]
+    input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
+
+    # Call the method
+    with patch('src.input_reader.pd.read_excel', return_value=mock_df) as mock_read_excel:
+        result = input_reader.map_full_name_to_alpha2_code()
+
+    # Check the result
+    expected = {'France': 'FR', 'Germany': 'DE', 'Italy': 'IT'}
+    assert result == expected
+
+    # Check that read_excel has been called with the correct path
+    mock_read_excel.assert_called_once_with(input_reader._db_dir / MAP_TO_ALPHA2_FILE_NAME)
+
+
+def test_read_interco_power_ratings(setup):
+    # -- Create mocks -- #
+    fake_excel_df = pd.DataFrame(columns=["Country_1", "Country_2", "Capacity (MW)"],
+                                 data=[
+                                     ["France", "Spain", 500],  # Inter-zone (FR - IBR)
+                                     ["France", "Portugal", 300],  # Inter-zone (FR - IBR)
+                                     ["Spain", "Portugal", 400]  # Intra-zone (IBR - IBR) -> should be excluded
+                                 ])
+
+    read_excel_mock = patch("pandas.read_excel", return_value=fake_excel_df).start()
+
+    fake_name_code_mapping_dict = {'France': 'FR', 'Spain': 'ES', 'Portugal': 'PT'}
+    map_full_name_mock = patch("src.input_reader.InputReader.map_full_name_to_alpha2_code",
+                               return_value=fake_name_code_mapping_dict).start()
+
+    # Mock the zones directly
+    db_dir = setup["data"]["fake directories"]["fake db dir"]
+    work_dir = setup["data"]["fake directories"]["fake work dir"]
+    input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
+    input_reader._zones = {'FR': ['FR'], 'IBR': ['ES', 'PT']}
+
+    # Run the function
+    interconnection_capacities_df = input_reader.read_interco_power_ratings()
+
+    # -- Expected result: aggregated by zone -- #
+    expected_df = pd.DataFrame(columns=["zone_from", "zone_to", "Capacity (MW)"],
+                               data=[
+                                   ["FR", "IBR", 800],  # 500 + 300
+                                   ["IBR", "FR", 800],  # symmetrical
+                               ])
+
+    # -- Check calls to mocks -- #
+    read_excel_mock.assert_called_once_with(db_dir / INTERCO_FOLDER_NAME / INTERCO_POWER_RATINGS_FILE_NAME)
+
+    map_full_name_mock.assert_called_once()
+
+    # -- Check result -- #
+    pd.testing.assert_frame_equal(interconnection_capacities_df, expected_df)
+
+
+def test_read_interco_powers(setup):
+    # Create a fake InputReader instance with minimal attributes
+    db_dir = setup["data"]["fake directories"]["fake db dir"]
+    work_dir = setup["data"]["fake directories"]["fake work dir"]
+    input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
+    input_reader._zones = {'FR': ['FR'], 'IBR': ['ES', 'PT']}
+
+    # Mock ExcelFile to simulate existing sheets
+    fake_excel_file = MagicMock()
+    fake_excel_file.sheet_names = ["2015"]
+    excel_file_mock = patch('pandas.ExcelFile', return_value=fake_excel_file).start()
+
+    # Create a fake interco power dataset
+    fake_excel_df = pd.DataFrame({
+        "Time": [pd.Timestamp("2015-01-01 00:00:00"), pd.Timestamp("2015-01-01 01:00:00")],
+        "France --> Spain": [100, 50],
+        "Spain --> France": [0, 10],
+        "France --> Portugal": [20, 0],
+        "Spain --> Portugal": [10, 10],  # Intra-zone, should be excluded
+    })
+
+    read_excel_mock = patch('pandas.read_excel', return_value=fake_excel_df).start()
+
+    # Mock the country name to alpha-2 code mapping
+    fake_name_code_mapping_dict = {'France': 'FR', 'Spain': 'ES', 'Portugal': 'PT'}
+    map_full_name_mock = patch("src.input_reader.InputReader.map_full_name_to_alpha2_code",
+                               return_value=fake_name_code_mapping_dict).start()
+
+    # Run the function
+    result_df = input_reader.read_interco_powers()
+
+    # Expected dataframe
+    expected_df = pd.DataFrame({
+        "Time": [pd.Timestamp("2015-01-01 00:00:00"),
+                 pd.Timestamp("2015-01-01 01:00:00"), pd.Timestamp("2015-01-01 01:00:00")],
+        "zone_from": ['FR', 'FR', 'IBR'],
+        "zone_to": ['IBR', 'IBR', 'FR'],
+        "Power (MW)": [120, 50, 10]
+    }).sort_values("Time")
+
+    fake_file_path_data = db_dir / INTERCO_FOLDER_NAME / INTERCO_POWERS_FILE_NAME
+    excel_file_mock.assert_called_once_with(fake_file_path_data)
+
+    read_excel_mock.assert_called_once_with(fake_file_path_data, sheet_name='2015')
+    map_full_name_mock.assert_called_once()
+
+    pd.testing.assert_frame_equal(result_df, expected_df)
+
+
+def test_keep_first_value_interco_powers_if_duplicated_timestep(setup):
+    db_dir = setup["data"]["fake directories"]["fake db dir"]
+    work_dir = setup["data"]["fake directories"]["fake work dir"]
+    input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
+    input_reader._zones = {'FR': ['FR'], 'ES': ['ES']}
+
+    # Create a fake interco power dataset
+    fake_excel_df = pd.DataFrame({
+        "Time": [pd.Timestamp("2015-01-01 00:00:00"), pd.Timestamp("2015-01-01 01:00:00"),
+                 pd.Timestamp("2015-01-01 01:00:00")],
+        "France --> Spain": [100, 50, 40],
+        "Spain --> France": [0, 10, 20],
+    })
+
+    # Run function
+    fake_name_code_mapping_dict = {'France': 'FR', 'Spain': 'ES'}
+    fake_excel_file = MagicMock()
+    fake_excel_file.sheet_names = ["2015"]
+    with patch("pandas.read_excel", return_value=fake_excel_df), \
+            patch("src.input_reader.InputReader.map_full_name_to_alpha2_code",
+                  return_value=fake_name_code_mapping_dict), \
+            patch('pandas.ExcelFile', return_value=fake_excel_file):
+        historical_powers = input_reader.read_interco_powers()
+
+        # Expected dataframe, the values of the second "2015-01-01 01:00:00" timestep should not be taken into account
+        expected_df = pd.DataFrame({
+            "Time": [pd.Timestamp("2015-01-01 00:00:00"),
+                     pd.Timestamp("2015-01-01 01:00:00"), pd.Timestamp("2015-01-01 01:00:00")],
+            "zone_from": ['FR', 'ES', 'FR'],
+            "zone_to": ['ES', 'FR', 'ES'],
+            "Power (MW)": [100, 10, 50]
+        }).sort_values("Time")
+
+    pd.testing.assert_frame_equal(historical_powers, expected_df)

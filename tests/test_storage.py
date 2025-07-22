@@ -50,7 +50,7 @@ def test_storage_initializes_load_and_generator(storage_setup):
     assert sector_cls.call_count == 2
 
     expected_calls = [
-        call("hydro pump storage", ANY, is_controllable=True, is_load=True),
+        call("hydro pump storage", ANY, is_controllable=True, is_storage_load=True),
         call("hydro pump storage", ANY, is_controllable=True)
     ]
 

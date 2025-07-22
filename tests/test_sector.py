@@ -1,7 +1,7 @@
+import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
-import matplotlib
 from pandas import Timestamp
 from pandas import date_range
 
@@ -33,12 +33,13 @@ def sector_setup():
     historical_prices = pd.Series([50, 60, 55, 52, 65, 70, 68, 66, 64], index=timestamps)
 
     # Sector instance in production mode
-    sector_prod = Sector(sector_name="solar", historical_powers=powers_prod, is_controllable=True, is_load=False)
+    sector_prod = Sector(sector_name="solar", historical_powers=powers_prod, is_controllable=True,
+                         is_storage_load=False)
     sector_prod._availabilities = availabilities
 
     # Sector instance in consumption mode
     sector_cons = Sector(sector_name="hydro pump storage", historical_powers=powers_cons, is_controllable=False,
-                         is_load=True)
+                         is_storage_load=True)
     sector_cons._availabilities = availabilities
 
     return {
@@ -69,7 +70,7 @@ def test_compute_use_ratio_consumption(sector_setup):
 
 # ------- Tests build_availabilities -------
 
-@pytest.mark.parametrize("name, is_load, is_controllable, powers, expected_avail", [
+@pytest.mark.parametrize("name, is_storage_load, is_controllable, powers, expected_avail", [
     # Test 1 : nuclear → availabilities = max on the rolling month
     (
             "nuclear",
@@ -104,8 +105,8 @@ def test_compute_use_ratio_consumption(sector_setup):
             pd.Series([100, 200, 150, 180, 170], index=date_range("2015-01-01", periods=5, freq="H"))
     ),
 ])
-def test_build_availabilities_parametrized(name, is_load, is_controllable, powers, expected_avail):
-    sector = Sector(name, powers, is_controllable, is_load)
+def test_build_availabilities_parametrized(name, is_storage_load, is_controllable, powers, expected_avail):
+    sector = Sector(name, powers, is_controllable, is_storage_load)
     sector.build_availabilities()
     result = sector._availabilities
 
@@ -149,7 +150,7 @@ def test_price_model_accuracy_on_linear_relation():
     # Linear relationship between powers and prices
     historical_prices = pd.Series(50 + normalized_powers * 50, index=idx)  # price range from 50 to 100
 
-    sector = Sector("solar", historical_powers=historical_powers, is_controllable=False, is_load=False)
+    sector = Sector("solar", historical_powers=historical_powers, is_controllable=False, is_storage_load=False)
     sector._availabilities = availabilities
 
     # The model must find price_no_power ≈ 50 and price_full_power ≈ 100
@@ -171,7 +172,7 @@ def test_price_model_with_noise():
     availabilities = pd.Series([1000] * 20, index=idx)
     prices = pd.Series(50 + normalized_powers * 50, index=idx)  # price range from 50 to 100
 
-    sector = Sector("solar", historical_powers=powers, is_load=False, is_controllable=False)
+    sector = Sector("solar", historical_powers=powers, is_storage_load=False, is_controllable=False)
     sector._availabilities = availabilities
     sector.build_price_model(prices, prices_init=(0, 100, 0, 100, 10), zone_name="EU")
 
@@ -187,7 +188,7 @@ def test_price_model_step_behavior():
     # Price range from 50 to 100
     historical_prices = pd.Series(np.linspace(0, 100, n), index=date_range("2015-01-01", periods=n, freq="H"))
 
-    # Low power before the threshold, high afterwards
+    # Low power before the threshold, high afterward
     historical_powers = pd.Series([0 if price < threshold_price else 1000 for price in historical_prices],
                                   index=historical_prices.index)
 
@@ -195,7 +196,7 @@ def test_price_model_step_behavior():
     availabilities = pd.Series(1000, index=historical_prices.index)
 
     # sector creation
-    sector = Sector("gas", historical_powers, is_load=False, is_controllable=True)
+    sector = Sector("gas", historical_powers, is_storage_load=False, is_controllable=True)
     sector._availabilities = availabilities
 
     # price model construction
@@ -216,7 +217,7 @@ def test_full_power_all_the_time():
     powers = pd.Series(1000, index=prices.index)
     availabilities = pd.Series(1000, index=prices.index)
 
-    sector = Sector("RES", powers, is_load=False, is_controllable=False)
+    sector = Sector("RES", powers, is_storage_load=False, is_controllable=False)
     sector._availabilities = availabilities
 
     sector.build_price_model(prices, prices_init=(0, 120, 0, 120, 10), zone_name="EU")
@@ -230,21 +231,21 @@ def test_full_power_all_the_time():
 
 # ------- Test plot_result -------
 
-@pytest.mark.parametrize("is_load, price_model, expected_title", [
+@pytest.mark.parametrize("is_storage_load, price_model, expected_title", [
     (False, (40, 70), "TestZone - solar - Production"),
     (True, (70, 40), "TestZone - hydro - Consumption"),
 ])
-def test_plot_result_variants(tmp_path, is_load, price_model, expected_title):
+def test_plot_result_variants(tmp_path, is_storage_load, price_model, expected_title):
     matplotlib.use("Agg")
     index = pd.date_range("2015-01-01", periods=5, freq="H")
     powers = pd.Series([100, 200, 150, 180, 170], index=index)
-    if is_load:
+    if is_storage_load:
         powers = -powers  # in order to have a use_ratio between -1 et 0
 
     prices = pd.Series([50, 60, 55, 52, 65], index=index)
 
-    name = "solar" if not is_load else "hydro"
-    sector = Sector(name, powers, is_load)
+    name = "solar" if not is_storage_load else "hydro"
+    sector = Sector(name, powers, is_storage_load)
     sector._availabilities = pd.Series([200, 200, 200, 200, 200], index=index)
     sector._price_model = price_model
 
@@ -252,3 +253,21 @@ def test_plot_result_variants(tmp_path, is_load, price_model, expected_title):
     sector.plot_result(zone_name="TestZone", historical_prices=prices, path=path)
 
     assert path.exists()
+
+
+def test_store_simulated_power(sector_setup):
+    # fake data
+    sector = sector_setup["sector_prod"]
+    timestep = pd.Timestamp("2015-01-01 12:00:00")
+
+    sector._current_power = 150
+
+    # tested method
+    sector.store_simulated_power(timestep)
+
+    # Verifications
+    expected_series = pd.Series([150], index=[timestep])
+
+    pd.testing.assert_series_equal(sector._simulated_powers, expected_series)
+
+    assert sector._current_power == 0

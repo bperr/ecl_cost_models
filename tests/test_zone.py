@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock, ANY
 import pandas as pd
 import pytest
 from pandas import Timestamp
+from pandas.testing import assert_series_equal
 
 from src.zone import Zone
 
@@ -125,13 +126,13 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
     is_controllable = False
 
     # Add a production sector (non-storage)
-    sector.is_load = False
+    sector.is_storage_load = False
     zone.add_sector("solar", zone_test_setup["powers"],
                     is_controllable=is_controllable)
 
     # Add a storage --> add 2 sectors (load and generator)
-    storage.load.is_load = True  # Storage mock
-    storage.generator.is_load = False
+    storage.load.is_storage_load = True  # Storage mock
+    storage.generator.is_storage_load = False
     zone.add_storage("hydro pump storage", zone_test_setup["powers"], is_controllable=is_controllable)
 
     # Method to test
@@ -166,3 +167,104 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
         # Check that historical_prices is well called (values, index, dtype, etc.)
         kwargs = mock_obj.plot_result.call_args.kwargs
         pd.testing.assert_series_equal(kwargs["historical_prices"], zone_test_setup["historical_prices"])
+
+
+def test_set_price_model(zone_test_setup):
+    zone = zone_test_setup["zone"]
+
+    # Creation of two sector mocks: a normal mock and a load mock
+    sector = MagicMock(name="sector_mock")
+    sector.name = "solar"
+    sector.is_storage_load = False
+
+    storage_sector = MagicMock(name="storage_sector_mock")
+    storage_sector.name = "hydro pump storage"
+    storage_sector.is_storage_load = True
+
+    # These two sectors are injected into the zone
+    zone._sectors = [sector, storage_sector]
+
+    # Simulated pricing model
+    price_models = {
+        "solar": [None, None, 10, 40],  # cons_full, cons_none, prod_none, prod_full
+        "hydro pump storage": [0, 20, 30, 70]
+    }
+
+    # Calling the method
+    zone.set_price_model(price_models)
+
+    # Check that calls are correct
+    sector.set_price_model.assert_called_once_with((10, 40))  # prod_none, prod_full
+    storage_sector.set_price_model.assert_called_once_with((20, 0))  # cons_none, cons_full
+
+
+def test_compute_demand(zone_test_setup):
+    zone = zone_test_setup["zone"]
+
+    # Creation of two sector mocks with historical powers
+    solar = MagicMock(name="sector1_mock")
+    solar.historical_powers = pd.Series([10, 20, None, 30], index=pd.date_range("2015-01-01", periods=4, freq="D"))
+
+    nuclear = MagicMock(name="sector2_mock")
+    nuclear.historical_powers = pd.Series([5, 15, 25, 25], index=pd.date_range("2015-01-01", periods=4, freq="D"))
+
+    zone._sectors = [solar, nuclear]
+
+    # Creation of a series of net imports
+    net_imports = pd.Series([2, -3, 5, 4], index=pd.date_range("2015-01-01", periods=4, freq="D"))
+
+    # Calling the method
+    zone.compute_demand(net_imports)
+
+    # Expected calculation: (solar + nuclear) + net_imports
+    expected_demand = pd.Series([17.0, 32.0, 30.0, 59.0], index=pd.date_range("2015-01-01", periods=4, freq="D"))
+
+    # Verification
+    assert_series_equal(zone._power_demand, expected_demand)
+
+
+def test_compute_demand_without_net_imports(zone_test_setup):
+    zone = zone_test_setup["zone"]
+
+    solar = MagicMock(name="sector1_mock")
+    solar.historical_powers = pd.Series([10, 20, 30], index=pd.date_range("2015-01-01", periods=3, freq="D"))
+
+    nuclear = MagicMock(name="sector2_mock")
+    nuclear.historical_powers = pd.Series([5, 15, 25], index=pd.date_range("2015-01-01", periods=3, freq="D"))
+
+    zone._sectors = [solar, nuclear]
+
+    zone.compute_demand(None)
+
+    expected_demand = pd.Series([15, 35, 55], index=pd.date_range("2015-01-01", periods=3, freq="D"))
+
+    assert_series_equal(zone._power_demand, expected_demand)
+
+
+def test_updated_simulated_powers(zone_test_setup):
+    zone = zone_test_setup["zone"]
+
+    # Mock sectors
+    solar = MagicMock()
+    nuclear = MagicMock()
+    zone._sectors = [solar, nuclear]
+
+    # Mock interconnections
+    interconnection1 = MagicMock()
+    interconnection2 = MagicMock()
+    zone._interconnections = [interconnection1, interconnection2]
+
+    # Fake timestep
+    timestep = pd.Timestamp("2015-01-01 12:00:00")
+
+    # Act
+    zone.store_simulated_power(timestep)
+
+    # Assert
+    # Check that each sector has called store_simulated_power with the correct timestep
+    for sector in zone._sectors:
+        sector.store_simulated_power.assert_called_once_with(timestep)
+
+    # Checks that each interconnection has called store_simulated_power with the correct timestep
+    for interconnection in zone._interconnections:
+        interconnection.store_simulated_power.assert_called_once_with(timestep)

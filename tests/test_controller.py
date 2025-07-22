@@ -4,8 +4,10 @@ from unittest.mock import MagicMock, call, patch, ANY
 import pandas as pd
 import pytest
 from pandas import Timestamp
+from pandas.testing import assert_series_equal
 
 from src.controller import Controller
+from src.controller import SIMULATED_POWERS_DIRECTORY_ROOT, SIMULATED_POWERS_FILE_ROOT
 from src.zone import Zone
 
 
@@ -77,6 +79,8 @@ def controller_setup():
 
     patch.stopall()
 
+
+# -------------- Price models methods --------------
 
 def test_build_price_models(controller_setup):
     controller = controller_setup["controller"]
@@ -166,16 +170,16 @@ def create_mock_zone(name, sector_specs):
     Creates a mock zone with sectors with respect to the specified specs
 
     :param name: name of the zone (str)
-    :param sector_specs: List of tuples (name, is_load, price_model)
+    :param sector_specs: List of tuples (name, is_storage_load, price_model)
     :return: MagicMock of zone
     """
     zone = MagicMock(spec=Zone)
     zone.name = name
     sectors = []
-    for sector_name, is_load, price_model in sector_specs:
+    for sector_name, is_storage_load, price_model in sector_specs:
         sector = MagicMock()
         sector.name = sector_name
-        sector.is_load = is_load
+        sector.is_storage_load = is_storage_load
         sector.price_model = price_model
         sectors.append(sector)
     zone.sectors = sectors
@@ -200,7 +204,7 @@ def test_export_price_models(controller_setup):
         ("solar", False, (10, 100)),
     ])
 
-    network.zones = [zone_mock_IBR, zone_mock_FR]
+    network.zones = {'IBR': zone_mock_IBR, 'FR': zone_mock_FR}
     controller._network = network
 
     written_df = {}  # to get the exported df
@@ -238,3 +242,384 @@ def test_export_price_models(controller_setup):
         ],
     )
     pd.testing.assert_frame_equal(df, expected_df)
+
+
+# -------------- OPF methods --------------
+
+@pytest.fixture
+def controller_opf_setup(controller_setup, request):
+    """
+    Parametrizable fixture to test both cases:
+    - Interconnection already exists
+    - Interconnection does not exist yet
+    """
+    controller = controller_setup["controller"]
+    network_mock = controller_setup["network"]
+    input_reader_mock = controller_setup["input_reader"]
+
+    # Mock interconnection ratings
+    interco_power_ratings = pd.DataFrame({
+        "zone_from": ["IBR", "FR"],
+        "zone_to": ["FR", "IBR"],
+        "Capacity (MW)": [1000, 1000]
+    })
+
+    # Mock interconnection flow data
+    interco_powers = pd.DataFrame({
+        "Time": [
+            Timestamp("2015-01-01 12:00:00"),
+            Timestamp("2015-02-01 13:00:00"),
+            Timestamp("2015-03-10 14:00:00"),
+            Timestamp("2016-01-05 15:00:00"),
+            Timestamp("2016-03-15 10:00:00"),
+            Timestamp("2015-02-01 13:00:00"),
+            Timestamp("2016-01-05 15:00:00"),
+        ],
+        "zone_from": ["IBR", "IBR", "IBR", "IBR", "IBR", "FR", "FR"],
+        "zone_to": ["FR", "FR", "FR", "FR", "FR", "IBR", "IBR"],
+        "Power (MW)": [100, 150, 120, 130, 140, 70, 80],
+    })
+
+    # Mock zones
+    zone_mock_ibr = MagicMock(name="IBR_zone")
+    zone_mock_ibr.name = "IBR"
+    zone_mock_ibr.interconnections = []
+
+    zone_mock_fr = MagicMock(name="FR_zone")
+    zone_mock_fr.name = "FR"
+    zone_mock_fr.interconnections = []
+
+    network_mock.zones = {"IBR": zone_mock_ibr, "FR": zone_mock_fr}
+    network_mock.run_opf = MagicMock(name="OPF")
+
+    expected_interco_powers = pd.Series(
+        [100., 80., 120., 50., 140.],
+        index=pd.to_datetime([
+            "2015-01-01 12:00:00",  # 100
+            "2015-02-01 13:00:00",  # 150 - 70 = 80
+            "2015-03-10 14:00:00",  # 120
+            "2016-01-05 15:00:00",  # 130 - 80 = 50
+            "2016-03-15 10:00:00",  # 140
+        ]),
+        name="Power (MW)"
+    )
+    expected_interco_powers.index.name = "Time"
+
+    # Parametrize whether the interconnection already exists
+    if getattr(request, 'param', False):
+        # Mock interconnection already exists
+        interconnection_mock = MagicMock()
+        interconnection_mock.zone_from.name = "IBR"
+        interconnection_mock.zone_to.name = "FR"
+        interconnection_mock.historical_powers = expected_interco_powers
+        network_mock.interconnections = [interconnection_mock]
+    else:
+        # No existing interconnection
+        network_mock.interconnections = []
+
+    # Inject required controller attributes
+    controller._zones = ["IBR", "FR"]
+    controller._powers = input_reader_mock.read_db_powers.return_value
+    controller._prices = input_reader_mock.read_db_prices.return_value
+    controller._storages = ["hydro pump storage"]
+    controller._controllable_sectors = ["hydro pump storage"]
+    controller._interco_power_ratings = interco_power_ratings
+    controller._interco_powers = interco_powers
+    controller._years = [(2015, 2016)]
+
+    fake_price_model = dict()
+    input_reader_mock.read_price_models.return_value = {"2015-2016": fake_price_model}
+
+    return {
+        "controller": controller,
+        "network": network_mock,
+        "input_reader": input_reader_mock,
+        "zone_mock_ibr": zone_mock_ibr,
+        "zone_mock_fr": zone_mock_fr,
+        "expected_interco_powers": expected_interco_powers,
+    }
+
+
+def test_check_price_models_valid(controller_setup):
+    controller = controller_setup["controller"]
+    controller._storages = ["battery"]
+    price_models = {
+        "FR": {
+            "solar": [None, None, 50, 100],  # Non-storage sector with valid production prices
+            # Storage sector with valid consumption prices (cons_full <= cons_none & cons_none <= prod_none)
+            "battery": [10, 20, 40, 50]
+        }
+    }
+    # Should not raise
+    controller.check_price_models(price_models)
+
+
+@pytest.mark.parametrize("zone, sector, prices, storages, expected_error", [
+    # Not None cons prices for solar sector (not storage)
+    ("FR", "solar", [20, 30, 50, 60], [], "Sector 'solar' in zone 'FR' is not storage but has consumption prices"),
+    # Production price p0 > p100
+    ("FR", "solar", [None, None, 100, 90], [], "Logical error: Prod_none > Prod_full for 'solar' in zone 'FR'"),
+    # Consumption price c100 > c0
+    ("FR", "battery", [30, 20, 50, 60], ["battery"],
+     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'"),
+    # prod_none is None
+    ("FR", "solar", [None, None, None, 100], [], "Missing production prices for 'solar' in zone 'FR"),
+    # prod_full is None
+    ("FR", "solar", [None, None, 10, None], [], "Missing production prices for 'solar' in zone 'FR"),
+    # Storage: cons_full is None
+    ("FR", "battery", [None, 40, 10, 20], ["battery"],
+     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+    # Storage: cons_none is None
+    ("FR", "battery", [30, None, 10, 20], ["battery"],
+     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+    # Storage: cons_none > prod_none
+    ("FR", "battery", [30, 50, 40, 60], ["battery"],
+     r"Logical error: Cons_none > Prod_none for 'battery' in zone 'FR' \(50 > 40\)")
+])
+def test_check_price_models_raises_errors(controller_setup, zone, sector, prices, storages, expected_error):
+    controller = controller_setup["controller"]
+    controller._storages = storages
+    price_models = {
+        zone: {
+            sector: prices
+        }
+    }
+
+    with pytest.raises(ValueError, match=expected_error):
+        controller.check_price_models(price_models)
+
+
+@pytest.mark.parametrize('controller_opf_setup', [True], indirect=True)
+def test_build_network_model_existing_interco(controller_opf_setup):
+    controller = controller_opf_setup["controller"]
+    network_mock = controller_opf_setup["network"]
+    zone_mock_ibr = controller_opf_setup["zone_mock_ibr"]
+    zone_mock_fr = controller_opf_setup["zone_mock_fr"]
+
+    # Run method
+    model_built = controller.build_network_model(2015, 2016)
+
+    # Verifications
+    assert network_mock.add_zone.call_count == 2
+    network_mock.set_price_model.assert_called_once_with(dict())
+    network_mock.add_interconnection.assert_not_called()
+
+    zone_mock_ibr.compute_demand.assert_called()
+    zone_mock_fr.compute_demand.assert_called()
+    assert model_built
+
+
+@pytest.mark.parametrize('controller_opf_setup', [False], indirect=True)
+def test_build_network_model_new_interco(controller_opf_setup):
+    controller = controller_opf_setup["controller"]
+    network_mock = controller_opf_setup["network"]
+    zone_mock_ibr = controller_opf_setup["zone_mock_ibr"]
+    zone_mock_fr = controller_opf_setup["zone_mock_fr"]
+    expected_interco_powers = controller_opf_setup["expected_interco_powers"]
+
+    # Local list to store created interconnections
+    created_interconnections = []
+
+    def add_interconnection_side_effect(zone_from, zone_to, power_rating, interco_powers):
+        # Create a simple mock interconnection object
+        interco_mock = MagicMock()
+        interco_mock.zone_from.name = zone_from.name
+        interco_mock.zone_to.name = zone_to.name
+        interco_mock.historical_powers = expected_interco_powers
+        created_interconnections.append(interco_mock)
+
+        zone_from.interconnections.append(interco_mock)
+        zone_to.interconnections.append(interco_mock)
+
+    # Mock add_interconnection to dynamically append to the interconnections list
+    network_mock.add_interconnection.side_effect = add_interconnection_side_effect
+    network_mock.interconnections = created_interconnections
+
+    # Run method
+    model_built = controller.build_network_model(2015, 2016)
+
+    # Verifications
+    assert network_mock.add_zone.call_count == 2
+    network_mock.set_price_model.assert_called_once_with(dict())
+
+    power_rating = 1000
+
+    # Only one interconnection should have been added
+    network_mock.add_interconnection.assert_called_once_with(zone_mock_ibr, zone_mock_fr, power_rating, ANY)
+    args, _ = network_mock.add_interconnection.call_args
+    interco_powers = args[3]
+    assert_series_equal(interco_powers.sort_index(), expected_interco_powers.sort_index())
+
+    expected_net_import_ibr = -expected_interco_powers
+    expected_net_import_fr = expected_interco_powers
+
+    assert zone_mock_ibr.compute_demand.called
+    ibr_call_args = zone_mock_ibr.compute_demand.call_args[0][0]
+    assert_series_equal(ibr_call_args.sort_index(), expected_net_import_ibr.sort_index())
+
+    assert zone_mock_fr.compute_demand.called
+    fr_call_args = zone_mock_fr.compute_demand.call_args[0][0]
+    assert_series_equal(fr_call_args.sort_index(), expected_net_import_fr.sort_index())
+
+    assert model_built
+
+
+@pytest.mark.parametrize(
+    "start_year, end_year, expect_warning, expected_result",
+    [
+        (2015, 2016, True, False),  # Cas avant 2018 → warning + False
+        (2018, 2019, False, True),  # Cas à partir de 2018 → pas de warning + True
+    ]
+)
+@pytest.mark.parametrize('controller_opf_setup', [True], indirect=True)
+def test_build_network_model_PL_behavior(controller_opf_setup, start_year, end_year, expect_warning, expected_result):
+    controller = controller_opf_setup["controller"]
+    network = controller_opf_setup["network"]
+    network.datetime_index = pd.to_datetime([Timestamp("2018-01-01 12:00:00")])
+    # Mock zones
+    zone_mock_PL = MagicMock(name="PL_zone")
+    zone_mock_PL.name = 'PL'
+    controller._zones.append('PL')
+
+    def get_countries_in_zone_mock(zone_name):
+        return ['PL', 'DE'] if zone_name == 'PL' else []
+
+    # Mock input_reader
+    input_reader_mock = MagicMock()
+    input_reader_mock.get_countries_in_zone.side_effect = get_countries_in_zone_mock
+    input_reader_mock.read_price_models.return_value = {
+        "2015-2016": {}, "2018-2019": {}
+    }
+    controller._input_reader = input_reader_mock
+    controller._network = network
+
+    # Only for cases after 2018
+    if start_year >= 2018:
+        controller._powers = {
+            "IBR": pd.DataFrame({"solar": [200], "hydro pump storage": [-200]},
+                                index=[Timestamp("2018-01-01 12:00:00")]),
+            "FR": pd.DataFrame({"solar": [200], "hydro pump storage": [0]}, index=[Timestamp("2018-01-01 12:00:00")]),
+            "PL": pd.DataFrame({"solar": [200], "hydro pump storage": [0]}, index=[Timestamp("2018-01-01 12:00:00")]),
+        }
+        controller._prices = pd.DataFrame({
+            "IBR": [50],
+            "FR": [48],
+            "PL": [48],
+        }, index=[Timestamp("2018-01-01 12:00:00")])
+
+    # Calling the method with or without an expected warning
+    if expect_warning:
+        with pytest.warns(UserWarning, match="Price data for Poland is incomplete before 2018"):
+            result = controller.build_network_model(start_year, end_year)
+    else:
+        result = controller.build_network_model(start_year, end_year)
+
+    assert result is expected_result
+
+
+@patch("src.controller.MAXIMUM_MISSING_STEPS_PER_YEAR", 1)
+def test_build_network_model_missing_steps_raise_warning(controller_opf_setup):
+    controller = controller_opf_setup["controller"]
+
+    network = controller_opf_setup["network"]
+    # powers dataframe has 5 timesteps (3 missing here on two different years)
+    network.datetime_index = pd.to_datetime([
+        Timestamp("2015-01-01 12:00:00"),
+        Timestamp("2016-03-15 10:00:00"),
+    ])
+    controller._network = network
+
+    with pytest.warns(UserWarning, match="cannot be used due to missing data in SPOT price"):
+        result = controller.build_network_model(2015, 2016)
+
+    assert result is False
+
+
+def test_run_opfs(controller_opf_setup):
+    # Definition of mocks
+    controller = controller_opf_setup["controller"]
+    controller._network = controller_opf_setup["network"]
+    controller._years = [(2015, 2016), (2018, 2019)]
+
+    # model_built = True if (start_year, end_year) == (2018, 2019), False otherwise
+    controller.build_network_model = MagicMock(
+        side_effect=lambda start_year, end_year: (start_year, end_year) == (2018, 2019))
+    controller.export_opfs = MagicMock()
+
+    controller._network.datetime_index = [
+        "01/01/2018 12:00:00",
+        "01/02/2018 12:00:00",
+        "01/03/2018 12:00:00"
+    ]
+
+    # Execution of the method to be tested
+    controller.run_opfs()
+
+    # Vérifications
+    controller.build_network_model.assert_has_calls([
+        call(2015, 2016),
+        call(2018, 2019)
+    ])
+
+    # Checking calls to run_opf
+    controller._network.run_opf.assert_any_call("01/01/2018 12:00:00")
+    controller._network.run_opf.assert_any_call("01/02/2018 12:00:00")
+    controller._network.run_opf.assert_any_call("01/03/2018 12:00:00")
+    assert controller._network.run_opf.call_count == 3
+
+    # Checking only one call to export_opfs (for 2018-2019)
+    controller.export_opfs.assert_called_once_with()
+
+
+@pytest.mark.parametrize("controller_opf_setup", [False], indirect=True)
+def test_export_opfs(controller_opf_setup):
+    controller = controller_opf_setup["controller"]
+    controller._network = controller_opf_setup["network"]
+
+    # fake work_dir
+    fake_work_dir = Path("fake/work/dir")
+    controller._work_dir = fake_work_dir
+
+    # Mock datetime_index
+    datetime_index = pd.to_datetime([
+        "2015-12-28 12:00:00",
+        "2015-12-29 12:00:00",
+        "2015-12-30 12:00:00",
+        "2016-01-01 12:00:00",
+        "2016-01-02 12:00:00",
+        "2016-01-03 12:00:00",
+    ])
+    controller._network.datetime_index = datetime_index
+
+    # Mock zones and sectors
+    zone_mock_ibr = controller_opf_setup["zone_mock_ibr"]
+    sector_mock = MagicMock()
+    sector_mock.name = "sector_ibr"
+    sector_mock.simulated_powers = pd.Series([10, 20, 30, 40, 50, 60], index=datetime_index)
+    zone_mock_ibr.sectors = [sector_mock]
+    controller._network.zones = {"IBR": zone_mock_ibr}
+
+    with patch('pathlib.Path.exists', return_value=True), \
+            patch('pathlib.Path.mkdir'), \
+            patch('pandas.ExcelWriter') as excel_writer_mock, \
+            patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock:
+        controller.export_opfs()
+
+    # Checks that ExcelWriter has been called up with the correct file
+    expected_folder = fake_work_dir / f"{SIMULATED_POWERS_DIRECTORY_ROOT}_2015-2016"
+    expected_file = expected_folder / f"{SIMULATED_POWERS_FILE_ROOT}_IBR.xlsx"
+
+    excel_writer_mock.assert_called_once_with(expected_file)
+
+    to_excel_mock.assert_called_once_with(ANY, ANY, sheet_name="2015-2016", index=False)
+
+    # get the dataframe
+    written_df = to_excel_mock.call_args[0][0]
+
+    # Compare the complete DataFrame
+    expected_df = pd.DataFrame({
+        "Start time": datetime_index,
+        "sector_ibr_MW": [10, 20, 30, 40, 50, 60],
+    }, index=datetime_index)
+
+    pd.testing.assert_frame_equal(written_df, expected_df)
