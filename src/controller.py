@@ -131,8 +131,7 @@ class Controller:
                             mode='w' if create_file else 'a') as writer:
             df.to_excel(writer, index=False, sheet_name=f"{start_year}-{end_year}")
 
-    @staticmethod
-    def check_price_models(price_models: dict, storages: list[str]):
+    def check_price_models(self, price_models: dict):
         """
         Validates the integrity and logical consistency of the price models for each sector in all zones.
 
@@ -168,7 +167,7 @@ class Controller:
                         f"({prod_none} > {prod_full})"
                     )
 
-                if sector in storages:
+                if sector in self._storages:
                     # Check consumption prices
                     if cons_none is None or cons_full is None:
                         raise ValueError(f"Missing consumption prices for storage sector '{sector}' in zone '{zone}'")
@@ -244,7 +243,7 @@ class Controller:
             price_models = self._input_reader.read_price_models()[f"{start_year}-{end_year}"]
 
             # check that data from price_models excel is consistent
-            self.check_price_models(price_models, self._storages)
+            self.check_price_models(price_models)
 
             # set price models for each sector of each zone
             self._network.set_price_model(price_models)

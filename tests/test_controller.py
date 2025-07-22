@@ -340,7 +340,9 @@ def controller_opf_setup(controller_setup, request):
     }
 
 
-def test_check_price_models_valid():
+def test_check_price_models_valid(controller_setup):
+    controller = controller_setup["controller"]
+    controller._storages = ["battery"]
     price_models = {
         "FR": {
             "solar": [None, None, 50, 100],  # Non-storage sector with valid production prices
@@ -348,11 +350,8 @@ def test_check_price_models_valid():
             "battery": [10, 20, 40, 50]
         }
     }
-
-    storages = ["battery"]
-
     # Should not raise
-    Controller.check_price_models(price_models, storages)
+    controller.check_price_models(price_models)
 
 
 @pytest.mark.parametrize("zone, sector, prices, storages, expected_error", [
@@ -377,7 +376,9 @@ def test_check_price_models_valid():
     ("FR", "battery", [30, 50, 40, 60], ["battery"],
      r"Logical error: Cons_none > Prod_none for 'battery' in zone 'FR' \(50 > 40\)")
 ])
-def test_check_price_models_raises_errors(zone, sector, prices, storages, expected_error):
+def test_check_price_models_raises_errors(controller_setup, zone, sector, prices, storages, expected_error):
+    controller = controller_setup["controller"]
+    controller._storages = storages
     price_models = {
         zone: {
             sector: prices
@@ -385,7 +386,7 @@ def test_check_price_models_raises_errors(zone, sector, prices, storages, expect
     }
 
     with pytest.raises(ValueError, match=expected_error):
-        Controller.check_price_models(price_models, storages)
+        controller.check_price_models(price_models)
 
 
 @pytest.mark.parametrize('controller_opf_setup', [True], indirect=True)
