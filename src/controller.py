@@ -62,7 +62,7 @@ class Controller:
             print("=" * 60)
             print("=" * 30)
             print(f"\n ====== Building price models for year {start_year}-{end_year} ======")
-            self._network = Network()
+            self._network = Network(opf_mode=False)
             prices = self._prices[(self._prices.index.year >= start_year) & (self._prices.index.year <= end_year)]
             powers = {
                 zone: df[(df.index.year >= start_year) & (df.index.year <= end_year)]
@@ -111,7 +111,7 @@ class Controller:
                 prices = sector.price_model
                 idx = sector_to_index[sector.name]
 
-                if sector.is_storage_load:
+                if sector.is_load:
                     row_cons_min[idx + 2] = prices[0]
                     row_cons_max[idx + 2] = prices[1]
 
@@ -205,7 +205,7 @@ class Controller:
         :return: bool True if the model was built, False otherwise
         """
         # ------- add zones -------
-        self._network = Network()
+        self._network = Network(opf_mode=True)
         prices = self._prices[(self._prices.index.year >= start_year) & (self._prices.index.year <= end_year)]
         powers = {
             zone: df[(df.index.year >= start_year) & (df.index.year <= end_year)]
@@ -255,7 +255,8 @@ class Controller:
                 zone_to = row['zone_to']
                 power_rating = row['Capacity (MW)']
 
-            # Check if the interconnection between the two zones already exist to avoid all the calculation if it does
+                # Check if the interconnection between the two zones already exist to avoid all the calculation if it
+                # does
                 interco_exists = False
 
                 for interconnection in self._network.interconnections:
@@ -285,7 +286,7 @@ class Controller:
             # ------- add loads -------
             # Demand = production + net import
             for zone_name, zone in self._network.zones.items():
-                net_import = 0
+                net_import = pd.Series(0, index=self._network.datetime_index)
                 for interconnection in zone.interconnections:
                     if interconnection.zone_from.name == zone_name:
                         net_import -= interconnection.historical_powers

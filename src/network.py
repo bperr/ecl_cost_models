@@ -1,6 +1,7 @@
 import pandas as pd
 
 from src.interconnection import Interconnection
+from src.opf_utils import TOL
 from src.zone import Zone
 
 
@@ -12,10 +13,11 @@ class Network:
     (including storages) and interconnections, and includes tools to build and validate price and power models.
     """
 
-    def __init__(self):
+    def __init__(self, opf_mode: bool):
         self._zones: dict[str, Zone] = dict()
         self._interconnections: list[Interconnection] = list()
         self._datetime_index: list[pd.Timestamp] | None = None  # Updated in add_zone
+        self._is_opf_mode = opf_mode
 
     @property
     def zones(self):
@@ -61,7 +63,8 @@ class Network:
         for sector_name in sectors_historical_powers.columns:
             is_controllable = sector_name in controllable_sectors
             if sector_name in storages:
-                zone.add_storage(sector_name, sectors_historical_powers[sector_name], is_controllable)
+                zone.add_storage(sector_name, sectors_historical_powers[sector_name], is_controllable,
+                                 opf_mode=self._is_opf_mode)
             else:
                 zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable)
 
@@ -117,22 +120,47 @@ class Network:
         Note:
             Method currently not implemented
         """
-        # converged = False
-        n_full_iter = 100
-        for i in range(n_full_iter):
-            # converged = True
-            for line in self._interconnections:
-                cost_change = line.optimize_export(timestep)
-                if cost_change < 0:
-                    pass
-                    # converged = False
 
+        # Initialise the network (no export)
+        for zone in self._zones.values():
+            zone.reset_powers()
+        for interco in self._interconnections:
+            interco.reset_power()
+
+        # Run market in each zone
+        for zone in self._zones.values():
+            zone.market_optimisation(timestep)
+
+        # Start optimisation loop
+        converged = False
+        iter_max = 100
+        i = 0
+        while not converged and i < iter_max:
+            print(f"========= Iter {i} =============")
+            cost_change = 0
+            for line in self._interconnections:
+                cost_change += line.optimise_export(timestep)
+            print(f"-- Cost change: {cost_change}")
+
+            assert cost_change < TOL  # <= 0
+            if abs(cost_change) < TOL:
+                converged = True
+            i += 1
+
+        if not converged:
+            return False  # The OPF did not converge
+
+        # Run market in each zone with the final exports
+        for zone in self._zones.values():
+            zone.market_optimisation(timestep)
+
+        # Store results
         for zone in self.zones.values():
             zone.store_simulated_power(timestep)
+        for interconnection in self._interconnections:
+            interconnection.store_simulated_power(timestep)
 
-        # Update each sector._simulated_powers
-        # Update each interconnection._simulated_powers
-        raise NotImplementedError
+        return True
 
     def check_power_models(self):
         """

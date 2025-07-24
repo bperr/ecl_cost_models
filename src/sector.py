@@ -17,24 +17,31 @@ class Sector:
     """
 
     def __init__(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool,
-                 is_storage_load: bool = False):
+                 is_load: bool = False):
         """
         Initializes a new Sector instance.
         :param sector_name: Name of the sector.
         :param historical_powers: Historical power consumption (negative) or production (positive) in MW
         :param is_controllable: Whether the sector's power usage is controllable.
-        :param is_storage_load: Whether the sector is a consumer (True) or producer (False).
+        :param is_load: Whether the sector is a consumer (True) or producer (False).
         """
         self._name: str = sector_name
         self._historical_powers: pd.Series = historical_powers  # in MW
 
         self._price_model = tuple()  # (price_no_power, price_full_power) in €/MWh
         self._is_controllable = is_controllable
-        self._is_storage_load = is_storage_load
+        self._is_load = is_load
 
-        self._current_power = 0
         self._simulated_powers = pd.Series()  # in MW
         self._availabilities = pd.Series()  # in MW
+
+        # -- "Variable" attribute for OPF computation
+        self._current_power = 0
+
+    def __repr__(self):
+        return (f"Sector {self.name}: {self._price_model}.  "
+                f"Load: {'Yes' if self._is_load else 'No'}, "
+                f"Controllable: {'Yes' if self._is_controllable else 'No'}")
 
     @property
     def name(self):
@@ -42,14 +49,19 @@ class Sector:
         return self._name
 
     @property
-    def is_storage_load(self):
+    def is_load(self):
         """Returns True if the sector is a consumer (load), otherwise False."""
-        return self._is_storage_load
+        return self._is_load
 
     @property
     def historical_powers(self):
         """Returns the sector historical power time series"""
-        return self._historical_powers
+        return self._historical_powers.copy()
+
+    @property
+    def available_powers(self):
+        """Returns the sector available power time series"""
+        return self._availabilities.copy()
 
     @property
     def simulated_powers(self):
@@ -74,12 +86,12 @@ class Sector:
         """
 
         if price_no_power == price_full_power:
-            if self.is_storage_load:
+            if self.is_load:
                 return -1 if price <= price_no_power else 0
             else:
                 return 1 if price >= price_no_power else 0
 
-        if self.is_storage_load:
+        if self.is_load:
             if price >= price_no_power:
                 return 0
             if price <= price_full_power:
@@ -160,13 +172,13 @@ class Sector:
             return total_error
 
         # Definition of constraints
-        if self.is_storage_load:
+        if self.is_load:
             constraints = {'type': "ineq", 'fun': lambda x: x[0] - x[1]}  # max_price-min_price must be positive
         else:
             constraints = {'type': "ineq", 'fun': lambda x: x[1] - x[0]}  # max_price-min_price must be positive
 
         # Prices initialisation
-        if self.is_storage_load:  # consumption mode
+        if self.is_load:  # consumption mode
             (min_price_full_power, max_price_full_power, min_price_no_power,
              max_price_no_power, step_prices_init) = prices_init
             prices_in_order = lambda x, y: y <= x  # noqa
@@ -253,7 +265,7 @@ class Sector:
         else:
             # fossil & storage : availability is supposed to be the maximum power called during the year
             if self._is_controllable:
-                if self.is_storage_load:
+                if self.is_load:
                     power_rating = self._historical_powers.min()
                 else:
                     power_rating = self._historical_powers.max()
@@ -288,7 +300,7 @@ class Sector:
             aligned = pd.concat([prices.rename("price"), use_ratios.rename("use_ratio")], axis=1).dropna()
             plt.scatter(aligned["price"], aligned["use_ratio"], s=7)
 
-            if self.is_storage_load:
+            if self.is_load:
                 model_y = [-1, -1, 0, 0]
                 price_min = self._price_model[1]  # consumption_price_full_power
                 price_max = self._price_model[0]  # consumption_price_no_power
@@ -320,3 +332,10 @@ class Sector:
         """
         self._simulated_powers[timestep] = self._current_power
         self._current_power = 0
+
+    @property
+    def current_power(self):
+        return self._current_power
+
+    def set_current_power(self, power: float):
+        self._current_power = power
