@@ -1,11 +1,12 @@
-import pandas as pd
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import numpy as np
+import pandas as pd
 import pytest
 
-from pathlib import Path
-from unittest.mock import ANY, MagicMock, patch
-
 from src.interconnection import Interconnection
+
 
 @pytest.fixture
 def create_interconnection():
@@ -64,10 +65,10 @@ def test_store_simulated_power(create_interconnection):
     ]
 )
 def test_compare_power_series_parametrized(historical, simulated, expected_corr, expected_mae, expected_max_rel,
-                                        expected_mean_rel, create_interconnection):
-
+                                           expected_mean_rel, create_interconnection):
     fake_path = Path("fake_path")
     interconnection = create_interconnection
+    interconnection._historical_powers = historical
     interconnection._simulated_powers = simulated
 
     with patch.object(interconnection, "plot_power_errors", MagicMock()):
@@ -93,7 +94,7 @@ def test_plot_power_errors(create_interconnection):
         "mean_relative_error": 0.07
     }
     fake_path = Path("fake_path")
-    expected_filename = f"FR-ES_interconnection_comparison.png".replace(" ", "_")
+    expected_filename = "FR-ES_interconnection_comparison.png".replace(" ", "_")
     expected_path = fake_path / expected_filename
 
     with patch("matplotlib.pyplot.savefig") as mock_savefig, \

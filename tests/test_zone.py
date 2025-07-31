@@ -1,10 +1,10 @@
+from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
 import pandas as pd
 import pytest
 from pandas import Timestamp
 from pandas.testing import assert_series_equal
-from pathlib import Path
 
 from src.zone import Zone
 

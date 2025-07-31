@@ -1,7 +1,6 @@
 import warnings
-
-import pandas as pd
 from pathlib import Path
+import pandas as pd
 
 from src.interconnection import Interconnection
 from src.opf_utils import DEMAND_PRICE, FAKE_CONS_PRICE, FAKE_PROD_PRICE, NodeCostFunction, TOL, assert_approx
@@ -88,7 +87,7 @@ class Zone:
         Assign a price model to each sector in the zone.
 
         For each sector in the zone:
-        - If the sector is a storage load (is_storage_load == True),
+        - If the sector is a storage load (is_load == True),
         use the price components in the order [cons_none, cons_full].
         - Otherwise, the price components are used in the order [prod_none, prod_full].
 

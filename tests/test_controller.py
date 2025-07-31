@@ -416,6 +416,7 @@ def test_build_network_model_new_interco(controller_opf_setup):
     zone_mock_ibr = controller_opf_setup["zone_mock_ibr"]
     zone_mock_fr = controller_opf_setup["zone_mock_fr"]
     expected_interco_powers = controller_opf_setup["expected_interco_powers"]
+    network_mock.datetime_index = expected_interco_powers.index
 
     # Local list to store created interconnections
     created_interconnections = []
@@ -606,7 +607,7 @@ def test_export_opfs(controller_opf_setup):
             patch('pathlib.Path.mkdir'), \
             patch('pandas.ExcelWriter') as excel_writer_mock, \
             patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock, \
-            patch.object(controller,"compare_power_series", MagicMock()) as mock_compare_power_series:
+            patch.object(controller, "compare_power_series", MagicMock()) as mock_compare_power_series:
         controller.export_opfs()
 
     # Checks that ExcelWriter has been called up with the correct file

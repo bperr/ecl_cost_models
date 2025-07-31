@@ -50,11 +50,11 @@ def network_setup():
     patch.stopall()
 
 
-def make_sector(name, price_model, is_storage_load):
+def make_sector(name, price_model, is_load):
     mock = MagicMock()
     mock.name = name
     mock.price_model = price_model
-    mock.is_storage_load = is_storage_load
+    mock.is_load = is_load
     return mock
 
 

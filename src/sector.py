@@ -389,16 +389,16 @@ class Sector:
             "zone": zone_name,
             "sector": self.name,
             "load": self.is_load,
-            "max_relative_error": round(float(max_relative_error),3),
-            "mean_relative_error": round(float(mean_relative_error),3),
-            "mean_absolute_error_MW": round(float(mean_absolute_error),3),
-            "correlation_coefficient": round(float(correlation_coef),3),
+            "max_relative_error": round(float(max_relative_error), 3),
+            "mean_relative_error": round(float(mean_relative_error), 3),
+            "mean_absolute_error_MW": round(float(mean_absolute_error), 3),
+            "correlation_coefficient": round(float(correlation_coef), 3),
         }
 
         self.plot_power_errors(zone_name, sectors_errors_data, path)
         return sectors_errors_data
 
-    def plot_power_errors(self, zone_name:str, sector_errors_data:dict, path: Path):
+    def plot_power_errors(self, zone_name: str, sector_errors_data: dict, path: Path):
         """
         Plot and save a comparison graph of simulated vs historical powers for the sector
 

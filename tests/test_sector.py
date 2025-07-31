@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import matplotlib
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 from unittest.mock import patch, MagicMock
 
 from src.sector import Sector
@@ -71,7 +71,7 @@ def test_compute_use_ratio_consumption(sector_setup):
 
 # ------- Tests build_availabilities -------
 
-@pytest.mark.parametrize("name, is_storage_load, is_controllable, powers, expected_avail", [
+@pytest.mark.parametrize("name, is_load, is_controllable, powers, expected_avail", [
     # Test 1 : nuclear → availabilities = max on the rolling month
     (
             "nuclear",
@@ -106,8 +106,8 @@ def test_compute_use_ratio_consumption(sector_setup):
             pd.Series([100, 200, 150, 180, 170], index=pd.date_range("2015-01-01", periods=5, freq="H"))
     ),
 ])
-def test_build_availabilities_parametrized(name, is_storage_load, is_controllable, powers, expected_avail):
-    sector = Sector(name, powers, is_controllable, is_storage_load)
+def test_build_availabilities_parametrized(name, is_load, is_controllable, powers, expected_avail):
+    sector = Sector(name, powers, is_controllable, is_load)
     sector.build_availabilities()
     result = sector._availabilities
 
@@ -258,21 +258,21 @@ def test_full_power_all_the_time():
 
 # ------- Test plot_result -------
 
-@pytest.mark.parametrize("is_storage_load, price_model, expected_title", [
+@pytest.mark.parametrize("is_load, price_model, expected_title", [
     (False, (40, 70), "TestZone - solar - Production"),
     (True, (70, 40), "TestZone - hydro - Consumption"),
 ])
-def test_plot_result_variants(tmp_path, is_storage_load, price_model, expected_title):
+def test_plot_result_variants(tmp_path, is_load, price_model, expected_title):
     matplotlib.use("Agg")
     index = pd.date_range("2015-01-01", periods=5, freq="H")
     powers = pd.Series([100, 200, 150, 180, 170], index=index)
-    if is_storage_load:
+    if is_load:
         powers = -powers  # in order to have a use_ratio between -1 et 0
 
     prices = pd.Series([50, 60, 55, 52, 65], index=index)
 
-    name = "solar" if not is_storage_load else "hydro"
-    sector = Sector(name, powers, is_storage_load)
+    name = "solar" if not is_load else "hydro"
+    sector = Sector(name, powers, is_load)
     sector._availabilities = pd.Series([200, 200, 200, 200, 200], index=index)
     sector._price_model = price_model
 
@@ -329,7 +329,7 @@ def test_store_simulated_power(sector_setup):
     ]
 )
 def test_compare_power_series_parametrized(historical, simulated, expected_corr, expected_mae, expected_max_rel,
-                                        expected_mean_rel):
+                                           expected_mean_rel):
     zone_name = "FR"
     fake_path = Path("fake_path")
     sector = Sector(sector_name="RES", historical_powers=historical, is_controllable=False, is_load=True)

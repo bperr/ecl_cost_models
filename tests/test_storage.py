@@ -1,7 +1,8 @@
-import pytest
-import pandas as pd
-from pandas import Timestamp
 from unittest.mock import patch, MagicMock, call, ANY
+
+import pandas as pd
+import pytest
+from pandas import Timestamp
 
 from src.storage import Storage
 

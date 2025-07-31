@@ -301,7 +301,8 @@ class Network:
         metrics per sector and a "lines_errors" sheet with error metrics per interconnection
 
         For each zone and interconnection in the network :
-        - Calls `compare_power_series` to compute error metrics and generate plots comparing simulated vs historical powers.
+        - Calls `compare_power_series` to compute error metrics and generate plots comparing simulated vs historical
+            powers.
         - Aggregates the results into two separate lists: one for sectors (zones), one for interconnections.
         - Saves both sets of results into an Excel file with two sheets: "sectors_errors" and "lines_errors".
 
@@ -313,10 +314,11 @@ class Network:
         lines_errors_data = []
 
         for zone in self.zones.values():
-            zone_errors_data += zone.compare_power_series(simulation_dir_path/SECTORS_SIMULATION_ERRORS_DIR)
+            zone_errors_data += zone.compare_power_series(simulation_dir_path / SECTORS_SIMULATION_ERRORS_DIR)
 
         for interconnection in self._interconnections:
-            lines_errors_data.append(interconnection.compare_power_series(simulation_dir_path/LINES_SIMULATION_ERRORS_DIR))
+            lines_errors_data.append(
+                interconnection.compare_power_series(simulation_dir_path / LINES_SIMULATION_ERRORS_DIR))
 
         df_sectors_errors = pd.DataFrame(zone_errors_data)
         df_lines_errors = pd.DataFrame(lines_errors_data)

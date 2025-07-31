@@ -292,10 +292,10 @@ class Interconnection:
 
         line_errors_data = {
             "line": f"{self._zone_from.name}-{self._zone_to.name}",
-            "max_relative_error": round(float(max_relative_error),3),
-            "mean_relative_error": round(float(mean_relative_error),3),
-            "mean_absolute_error_MW": round(float(mean_absolute_error),3),
-            "correlation_coefficient": round(float(correlation_coef),3)
+            "max_relative_error": round(float(max_relative_error), 3),
+            "mean_relative_error": round(float(mean_relative_error), 3),
+            "mean_absolute_error_MW": round(float(mean_absolute_error), 3),
+            "correlation_coefficient": round(float(correlation_coef), 3)
         }
 
         self.plot_power_errors(line_errors_data, path)
