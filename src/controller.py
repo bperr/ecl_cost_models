@@ -385,10 +385,11 @@ class Controller:
         in a directory named according to the simulation period.
 
         - The OPF simulation results must be available in the '_simulated_powers' attribute of each sector.
-        - The export format includes a timestamp column ('Début de l'heure') and one column per sector
+        - The export format includes a timestamp column ('Start time') and one column per sector
           showing the simulated power in MW.
         - The directory is created under the working directory.
         """
+        start_year, end_year = None, None
         for zone_name, zone in self._network.zones.items():
             sectors = zone.sectors
 
@@ -428,3 +429,20 @@ class Controller:
                 combined_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
             print(f'File successfully exported : {file_path}')
+        self.compare_power_series(start_year, end_year)
+
+    def compare_power_series(self, start_year: int, end_year: int):
+        """
+        Compute and save errors between simulated and historical powers for all zones and interconnections
+        over a given period. This includes generating comparison plots and exporting an Excel summary file.
+
+        Parameters
+        ----------
+        start_year : int
+        Start year of the simulation period.
+
+        end_year : int
+        End year of the simulation period.
+        """
+        path = self._work_dir / f"{SIMULATED_POWERS_DIRECTORY_ROOT}_{start_year}-{end_year}"
+        self._network.compare_power_series(path)

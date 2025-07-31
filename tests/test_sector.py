@@ -1,9 +1,10 @@
+from pathlib import Path
+
 import matplotlib
-import numpy as np
 import pandas as pd
 import pytest
-from pandas import Timestamp
-from pandas import date_range
+import numpy as np
+from unittest.mock import patch, MagicMock
 
 from src.sector import Sector
 
@@ -11,15 +12,15 @@ from src.sector import Sector
 @pytest.fixture
 def sector_setup():
     # fixed Timestamps
-    timestamps = [Timestamp("01/01/2015  12:00:00"),
-                  Timestamp("05/02/2015  13:00:00"),
-                  Timestamp("10/03/2015  14:00:00"),
-                  Timestamp("15/04/2015  09:00:00"),
-                  Timestamp("20/05/2015  16:00:00"),
-                  Timestamp("25/06/2015  08:00:00"),
-                  Timestamp("30/07/2015  19:00:00"),
-                  Timestamp("04/09/2015  11:00:00"),
-                  Timestamp("10/11/2015  22:00:00")]
+    timestamps = [pd.Timestamp("01/01/2015  12:00:00"),
+                  pd.Timestamp("05/02/2015  13:00:00"),
+                  pd.Timestamp("10/03/2015  14:00:00"),
+                  pd.Timestamp("15/04/2015  09:00:00"),
+                  pd.Timestamp("20/05/2015  16:00:00"),
+                  pd.Timestamp("25/06/2015  08:00:00"),
+                  pd.Timestamp("30/07/2015  19:00:00"),
+                  pd.Timestamp("04/09/2015  11:00:00"),
+                  pd.Timestamp("10/11/2015  22:00:00")]
 
     # --- Data for a sector in a zone ---
     # Powers (MW)
@@ -48,7 +49,7 @@ def sector_setup():
         "powers_prod": powers_prod,
         "powers_cons": powers_cons,
         "availabilities": availabilities,
-        "historical_prices": historical_prices
+        "historical_prices": historical_prices,
     }
 
 
@@ -78,12 +79,12 @@ def test_compute_use_ratio_consumption(sector_setup):
             True,
             pd.Series(
                 [100] * 336 + [300] * 48 + [100] * 336,  # Total = 720h = 30 days
-                index=date_range("2015-01-01", periods=720, freq="H")
+                index=pd.date_range("2015-01-01", periods=720, freq="H")
             ),
             # equals 300 for each timestep (the window of +/- 14 days always has 300 as maximum power)
             pd.Series(
                 [300] * 720,
-                index=date_range("2015-01-01", periods=720, freq="H")
+                index=pd.date_range("2015-01-01", periods=720, freq="H")
             )
     ),
 
@@ -92,8 +93,8 @@ def test_compute_use_ratio_consumption(sector_setup):
             "fossil",
             False,
             True,
-            pd.Series([100, 200, 150, 180, 170], index=date_range("2015-01-01", periods=5, freq="H")),
-            pd.Series([200] * 5, index=date_range("2015-01-01", periods=5, freq="H"))
+            pd.Series([100, 200, 150, 180, 170], index=pd.date_range("2015-01-01", periods=5, freq="H")),
+            pd.Series([200] * 5, index=pd.date_range("2015-01-01", periods=5, freq="H"))
     ),
 
     # Test 3 : Renewable (non-controllable) → availabilities = powers
@@ -101,8 +102,8 @@ def test_compute_use_ratio_consumption(sector_setup):
             "solar",
             False,
             False,
-            pd.Series([100, 200, 150, 180, 170], index=date_range("2015-01-01", periods=5, freq="H")),
-            pd.Series([100, 200, 150, 180, 170], index=date_range("2015-01-01", periods=5, freq="H"))
+            pd.Series([100, 200, 150, 180, 170], index=pd.date_range("2015-01-01", periods=5, freq="H")),
+            pd.Series([100, 200, 150, 180, 170], index=pd.date_range("2015-01-01", periods=5, freq="H"))
     ),
 ])
 def test_build_availabilities_parametrized(name, is_storage_load, is_controllable, powers, expected_avail):
@@ -122,7 +123,7 @@ def test_build_availabilities_parametrized(name, is_storage_load, is_controllabl
     ("Industry", False, False, True),
 ])
 def test_available_power(name, is_storage, is_load, is_controllable):
-    historical_powers = pd.Series([100, 200, 150], index=date_range("2015-01-01", periods=3, freq="H"))
+    historical_powers = pd.Series([100, 200, 150], index=pd.date_range("2015-01-01", periods=3, freq="H"))
     sector = Sector(sector_name=name, historical_powers=historical_powers,
                     is_controllable=is_controllable, is_load=is_load)
     if is_storage:
@@ -212,7 +213,7 @@ def test_price_model_step_behavior():
     threshold_price = 50
 
     # Price range from 50 to 100
-    historical_prices = pd.Series(np.linspace(0, 100, n), index=date_range("2015-01-01", periods=n, freq="H"))
+    historical_prices = pd.Series(np.linspace(0, 100, n), index=pd.date_range("2015-01-01", periods=n, freq="H"))
 
     # Low power before the threshold, high afterward
     historical_powers = pd.Series([0 if price < threshold_price else 1000 for price in historical_prices],
@@ -237,7 +238,7 @@ def test_price_model_step_behavior():
 
 def test_full_power_all_the_time():
     n = 50
-    prices = pd.Series(np.linspace(30, 100, n), index=date_range("2015-01-01", periods=n, freq="H"))
+    prices = pd.Series(np.linspace(30, 100, n), index=pd.date_range("2015-01-01", periods=n, freq="H"))
 
     # Power is always equal to availability (ex : Renewables) --> use ratio = 1 for all prices
     powers = pd.Series(1000, index=prices.index)
@@ -298,3 +299,74 @@ def test_store_simulated_power(sector_setup):
         pd.testing.assert_series_equal(sector._simulated_powers, expected_series)
 
         assert sector._current_power == 0
+
+@pytest.mark.parametrize(
+    "historical, simulated, expected_corr, expected_mae, expected_max_rel, expected_mean_rel",
+    [  # test 1 : Same series
+        (pd.Series([1, 2, 3, 4, 5]),
+         pd.Series([1, 2, 3, 4, 5]),
+         1.0, 0.0, 0.0, 0.0),
+
+        # test 2 : Opposite values
+        (pd.Series([1, 2, 3, 4, 5]),
+         pd.Series([-1, -2, -3, -4, -5]),
+         -1.0, 6.0, 2.0, 2.0),
+
+        # test 3 : Constant shift
+        (pd.Series([1, 2, 3, 4, 5]),
+         pd.Series([2, 3, 4, 5, 6]),
+         1.0, 1.0, 1.0, (1 / 1 + 1 / 2 + 1 / 3 + 1 / 4 + 1 / 5) / 5),  # ≈ 0.456
+
+        # test 4 : Noise
+        (pd.Series([10, 20, 30, 40, 50]),
+         pd.Series([12, 18, 29, 41, 48]),
+         np.corrcoef([10, 20, 30, 40, 50], [12, 18, 29, 41, 48])[0, 1],
+         np.mean(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48]))),
+         np.max(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array(
+             [10, 20, 30, 40, 50])),
+         np.mean(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array(
+             [10, 20, 30, 40, 50]))),
+    ]
+)
+def test_compare_power_series_parametrized(historical, simulated, expected_corr, expected_mae, expected_max_rel,
+                                        expected_mean_rel):
+    zone_name = "FR"
+    fake_path = Path("fake_path")
+    sector = Sector(sector_name="RES", historical_powers=historical, is_controllable=False, is_load=True)
+    sector._simulated_powers = simulated
+
+    with patch.object(sector, "plot_power_errors", MagicMock()):
+        result = sector.compare_power_series(zone_name, fake_path)
+
+    assert result["zone"] == zone_name
+    assert result["sector"] == sector.name
+    assert result["load"] == sector.is_load
+    assert result["correlation_coefficient"] == round(float(expected_corr), 3)
+    assert result["mean_absolute_error_MW"] == round(float(expected_mae), 3)
+    assert result["max_relative_error"] == round(float(expected_max_rel), 3)
+    assert result["mean_relative_error"] == round(float(expected_mean_rel), 3)
+
+
+def test_plot_power_errors(sector_setup):
+    sector = sector_setup["sector_prod"]
+    idx = pd.date_range("2015-01-01", periods=10, freq="H")
+    historical_powers = pd.Series(np.linspace(0, 1000, 10), index=idx)
+
+    sector._historical_powers = historical_powers
+    sector._simulated_powers = sector.historical_powers * 0.95
+
+    zone = "FR"
+    errors_data = {
+        "max_relative_error": 0.11,
+        "mean_relative_error": 0.07
+    }
+    fake_path = Path("fake_path")
+    expected_filename = f"{zone}_{sector.name}_comparison.png".replace(" ", "_")
+    expected_path = fake_path / expected_filename
+
+    with patch("matplotlib.pyplot.savefig") as mock_savefig, \
+            patch("matplotlib.pyplot.close") as mock_close:
+        sector.plot_power_errors(zone, errors_data, fake_path)
+
+    mock_savefig.assert_called_once_with(expected_path)
+    mock_close.assert_called_once()

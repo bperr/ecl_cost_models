@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
@@ -5,8 +6,8 @@ import pytest
 from pandas import Timestamp
 
 from src.interconnection import ExteriorInterconnection, Interconnection, OUT_ZONE_NAME
-from src.network import Network
 from src.zone import Zone
+from src.network import Network, SECTORS_SIMULATION_ERRORS_DIR, LINES_SIMULATION_ERRORS_DIR
 
 
 @pytest.fixture(scope="function")
@@ -289,3 +290,52 @@ def test_initialise_opf_raise_warning_if_non_feasible_initialisation_requires_to
         f"Interconnection with the outside zone is modified by -5, therefore "
         "simulation results cannot be compared with historical data", stacklevel=2
     )
+
+
+def test_compare_power_series(network_setup):
+    # --- Zone mock ---
+    zone = network_setup["zone"]
+    zone.compare_power_series.return_value = [
+        {"zone": "FR", "sector": "solar", "error": 0.15},
+        {"zone": "FR", "sector": "hydro pump storage", "error": 0.21},
+    ]
+    zones = {"FR": zone}
+
+    # --- Interconnection mock ---
+    interconnection = MagicMock(name="interconnection_mock")
+    interconnection.compare_power_series.return_value = {"line": "FR-ES", "error": 0.07}
+    interconnections = [interconnection]
+
+    network = Network(opf_mode=True)
+    network._zones = zones
+    network._interconnections = interconnections
+
+    fake_path = Path("fake_path")
+    fake_dict = {"key": "value"}
+    fake_list = [fake_dict]
+
+    written_dfs = []
+
+    def patch_to_excel(self, *args, **kwargs):
+        written_dfs.append(self)
+
+    with (
+        patch("pandas.DataFrame.to_excel", autospec=True, side_effect=patch_to_excel) as mock_to_excel,
+        patch("pandas.ExcelWriter") as mock_writer,
+        patch.object(zone, "compare_power_series", return_value=fake_list) as mock_zone_check,
+        patch.object(interconnection, "compare_power_series", return_value=fake_dict) as mock_line_check
+    ):
+        network.compare_power_series(fake_path)
+
+    mock_zone_check.assert_called_once_with(fake_path / SECTORS_SIMULATION_ERRORS_DIR)
+    mock_line_check.assert_called_once_with(fake_path / LINES_SIMULATION_ERRORS_DIR)
+
+    mock_writer.assert_called_once()
+    assert mock_to_excel.call_count == 2
+    assert len(written_dfs) == 2
+
+    expected_df_sectors = pd.DataFrame([{"key": "value"}])
+    expected_df_lines = pd.DataFrame([{"key": "value"}])
+
+    pd.testing.assert_frame_equal(written_dfs[0], expected_df_sectors)
+    pd.testing.assert_frame_equal(written_dfs[1], expected_df_lines)

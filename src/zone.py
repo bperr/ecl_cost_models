@@ -1,6 +1,7 @@
 import warnings
 
 import pandas as pd
+from pathlib import Path
 
 from src.interconnection import Interconnection
 from src.opf_utils import DEMAND_PRICE, FAKE_CONS_PRICE, FAKE_PROD_PRICE, NodeCostFunction, TOL, assert_approx
@@ -286,6 +287,7 @@ class Zone:
         # To build the cost function of the node, we only need to compute the cost associated to these threshold powers
         # and the corresponding prices intervals.
         #
+
         # To satisfy all loads without producing anything in the node (leading to a cost of 0 in the node), the
         # following power is the opposite of what must be imported from the neighbour nodes.
         # This is the first point of the power/cost curve.
@@ -473,3 +475,29 @@ class Zone:
     def update_storages_energy(self):
         for storage in self._storages:
             storage.update_energy()
+
+    def compare_power_series(self, path: Path):
+        """
+        Generate and save plots of simulated vs historical powers for each sector of the zone in the directory of the
+        specified path, and collect corresponding error metrics in a list of dictionaries.
+
+        :param path: path of the directory in which the plots of simulated powers vs historical_powers for each sector
+        are saved
+        :return zone_error_data: list of dictionaries containing errors data (mean relative error, max relative error,
+        mean absolute error and correlation coefficient) for each sector of the zone with the following structure:
+        zone_error_data = [{
+            "zone": FR,
+            "sector": RES,
+            "load": False,
+            "max_relative_error": 0.3,
+            "mean_relative_error": 0.2,
+            "mean_absolute_error_MW": 300,
+            "correlation_coefficient": 0.7,
+        }]
+        """
+        zone_error_data = []
+
+        for sector in self._sectors:
+            zone_error_data.append(sector.compare_power_series(self._name, path))
+
+        return zone_error_data

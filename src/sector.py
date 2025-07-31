@@ -360,3 +360,80 @@ class Sector:
 
     def set_current_power(self, power: float):
         self._current_power = power
+
+    def compare_power_series(self, zone_name, path: Path):
+        """
+        Generate and save plots comparing simulated vs historical powers for the sector,
+        and compute error metrics quantifying the differences
+
+        Parameters
+        ----------
+        zone_name:str: Name of the zone being analyzed
+
+        path:Path: Directory path where the generated comparison plots will be saved
+
+        :return zone_error_data: Dictionary containing error metrics for the sector
+        """
+        absolute_error = np.abs(self.historical_powers - self.simulated_powers)
+        mean_absolute_error = np.mean(absolute_error)
+        relative_error = (absolute_error / self.historical_powers.replace(0, np.nan)).dropna()
+
+        max_relative_error = relative_error.max()
+        mean_relative_error = relative_error.mean()
+
+        correlation_coef = np.nan
+        if np.std(self.historical_powers) != 0 and np.std(self.simulated_powers) != 0:
+            correlation_coef = np.corrcoef(self.historical_powers, self.simulated_powers)[0, 1]
+
+        sectors_errors_data = {
+            "zone": zone_name,
+            "sector": self.name,
+            "load": self.is_load,
+            "max_relative_error": round(float(max_relative_error),3),
+            "mean_relative_error": round(float(mean_relative_error),3),
+            "mean_absolute_error_MW": round(float(mean_absolute_error),3),
+            "correlation_coefficient": round(float(correlation_coef),3),
+        }
+
+        self.plot_power_errors(zone_name, sectors_errors_data, path)
+        return sectors_errors_data
+
+    def plot_power_errors(self, zone_name:str, sector_errors_data:dict, path: Path):
+        """
+        Plot and save a comparison graph of simulated vs historical powers for the sector
+
+        Parameters
+        ----------
+        zone_name:str: Name of the zone being analyzed
+
+        path:Path: Directory path where the generated comparison plot is saved
+
+        sector_errors_data : Dictionary containing error metrics for the sector
+        """
+        path.mkdir(parents=True, exist_ok=True)
+
+        max_relative_error = sector_errors_data["max_relative_error"]
+        mean_relative_error = sector_errors_data["mean_relative_error"]
+
+        plt.figure(figsize=(10, 6))
+        self.historical_powers.plot(label='Historical', linewidth=2)
+        self.simulated_powers.plot(label='Simulation', linewidth=2, linestyle='--')
+
+        plt.legend()
+        plt.title(f"{self.name} - {zone_name}")
+        plt.xlabel("Timestep")
+        plt.ylabel("Power (MW)")
+
+        if self.historical_powers.min() > 0 and self.simulated_powers.min() > 0:
+            plt.ylim(bottom=0)
+
+        error_text = f"Max error : {max_relative_error:.2%}\nMean error : {mean_relative_error:.2%}"
+        plt.text(0.05, 0.95, error_text, transform=plt.gca().transAxes,
+                 fontsize=10, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.6))
+
+        # Saving
+        file_name = f"{zone_name}_{self.name}_comparison.png".replace(" ", "_")
+        file_path = path / f"{file_name}"
+        plt.tight_layout()
+        plt.savefig(file_path)
+        plt.close()

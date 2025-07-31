@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 from pandas import Timestamp
 from pandas.testing import assert_series_equal
+from pathlib import Path
 
 from src.zone import Zone
 
@@ -303,3 +304,17 @@ def test_update_storages_energy(zone_test_setup):
 
     zone.update_storages_energy()
     storage.update_energy.assert_called_once()
+
+def test_compare_power_series_zone(zone_test_setup):
+    zone = zone_test_setup["zone"]
+    sector = zone_test_setup["sector"]
+    zone._sectors = [sector]
+    fake_path = Path("fake_path")
+    fake_dict = {}
+
+    with patch.object(sector, "compare_power_series", return_value=fake_dict) as mock_sector_check:
+        result = zone.compare_power_series(fake_path)
+
+    # On attend un appel à compare_power_series sur chaque secteur, avec le bon nom et le bon path
+    mock_sector_check.assert_called_once_with(zone._name, fake_path)
+    assert result == [fake_dict]

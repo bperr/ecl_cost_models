@@ -2,14 +2,14 @@ from __future__ import annotations  # Postpones annotation checking
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from src.opf_utils import LineCostFunction, TOL, bounded_value, minimise_trinomial
 
 if TYPE_CHECKING:  # False at runtime
     from zone import Zone  # Import zone only during type checking, not at runtime
 
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class Interconnection:
@@ -268,6 +268,76 @@ class Interconnection:
 
             return x, cost
 
+    def compare_power_series(self, path):
+        """
+        Generate and save plots comparing simulated vs historical powers for the interconnection,
+        and compute error metrics quantifying the differences
+
+        Parameters
+        ----------
+        path:Path: Directory path where the generated comparison plots will be saved
+
+        :return zone_error_data: Dictionary containing error metrics for the interconnection
+        """
+        absolute_error = np.abs(self._historical_powers - self._simulated_powers)
+        mean_absolute_error = np.mean(absolute_error)
+        relative_error = (absolute_error / self._historical_powers.replace(0, np.nan)).dropna()
+
+        max_relative_error = relative_error.max()
+        mean_relative_error = relative_error.mean()
+
+        correlation_coef = np.nan
+        if np.std(self._historical_powers) != 0 and np.std(self._simulated_powers) != 0:
+            correlation_coef = np.corrcoef(self._historical_powers, self._simulated_powers)[0, 1]
+
+        line_errors_data = {
+            "line": f"{self._zone_from.name}-{self._zone_to.name}",
+            "max_relative_error": round(float(max_relative_error),3),
+            "mean_relative_error": round(float(mean_relative_error),3),
+            "mean_absolute_error_MW": round(float(mean_absolute_error),3),
+            "correlation_coefficient": round(float(correlation_coef),3)
+        }
+
+        self.plot_power_errors(line_errors_data, path)
+        return line_errors_data
+
+    def plot_power_errors(self, line_errors_data, path):
+        """
+        Plot and save a comparison graph of simulated vs historical powers for the interconnection
+
+        Parameters
+        ----------
+        path:Path: Directory path where the generated comparison plot is saved
+
+        line_errors_data : Dictionary containing error metrics for the interconnection
+        """
+        path.mkdir(parents=True, exist_ok=True)
+
+        max_relative_error = line_errors_data["max_relative_error"]
+        mean_relative_error = line_errors_data["mean_relative_error"]
+
+        plt.figure(figsize=(10, 6))
+        self._historical_powers.plot(label='Historical', linewidth=2)
+        self._simulated_powers.plot(label='Simulation', linewidth=2, linestyle='--')
+
+        plt.legend()
+        plt.title(f"interconnection {self._zone_from.name}-{self._zone_to.name}")
+        plt.xlabel("Timestep")
+        plt.ylabel("Power (MW)")
+
+        if self.historical_powers.min() > 0 and self._simulated_powers.min() > 0:
+            plt.ylim(bottom=0)
+
+        error_text = f"Max error : {max_relative_error:.2%}\nMean error : {mean_relative_error:.2%}"
+        plt.text(0.05, 0.95, error_text, transform=plt.gca().transAxes,
+                 fontsize=10, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.6))
+
+        # Saving
+        file_name = f"{self._zone_from.name}-{self._zone_to.name}_interconnection_comparison.png".replace(" ", "_")
+        file_path = path / f"{file_name}"
+        plt.tight_layout()
+        plt.savefig(file_path)
+        plt.close()
 
 OUT_ZONE_NAME = "OUTSIDE"
 

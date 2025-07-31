@@ -3,9 +3,14 @@ import warnings
 import pandas as pd
 
 from src.interconnection import ExteriorInterconnection, Interconnection
+from pathlib import Path
+from src.interconnection import Interconnection
 from src.opf_utils import TOL, bounded_value
 from src.zone import Zone
 
+POWERS_ERRORS_EXCEL_FILE = "simulated_powers_errors.xlsx"
+SECTORS_SIMULATION_ERRORS_DIR = 'errors_simulated_powers_by_sector'
+LINES_SIMULATION_ERRORS_DIR = 'errors_simulated_powers_by_interconnection'
 
 class Network:
     """
@@ -288,3 +293,37 @@ class Network:
             interconnection.store_simulated_power(timestep)
 
         return True
+
+    def compare_power_series(self, simulation_dir_path: Path):
+        """
+        Compute and save errors between simulated and historical powers for all zones and interconnections. It generates
+        comparison plots for each one. It also generates an Excel file containing a "sectors_errors" sheet with error
+        metrics per sector and a "lines_errors" sheet with error metrics per interconnection
+
+        For each zone and interconnection in the network :
+        - Calls `compare_power_series` to compute error metrics and generate plots comparing simulated vs historical powers.
+        - Aggregates the results into two separate lists: one for sectors (zones), one for interconnections.
+        - Saves both sets of results into an Excel file with two sheets: "sectors_errors" and "lines_errors".
+
+        Parameters
+        ----------
+        simulation_dir_path:Path: Root directory where plots and the Excel summary file will be saved
+        """
+        zone_errors_data = []
+        lines_errors_data = []
+
+        for zone in self.zones.values():
+            zone_errors_data += zone.compare_power_series(simulation_dir_path/SECTORS_SIMULATION_ERRORS_DIR)
+
+        for interconnection in self._interconnections:
+            lines_errors_data.append(interconnection.compare_power_series(simulation_dir_path/LINES_SIMULATION_ERRORS_DIR))
+
+        df_sectors_errors = pd.DataFrame(zone_errors_data)
+        df_lines_errors = pd.DataFrame(lines_errors_data)
+
+        excel_path = simulation_dir_path / POWERS_ERRORS_EXCEL_FILE
+        with pd.ExcelWriter(excel_path) as writer:
+            df_sectors_errors.to_excel(writer, sheet_name="sectors_errors", index=False)
+            df_lines_errors.to_excel(writer, sheet_name="lines_errors", index=False)
+
+        print(f"\nErrors simulated vs historical powers exported at : {excel_path}")

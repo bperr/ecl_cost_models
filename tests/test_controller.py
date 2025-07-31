@@ -605,7 +605,8 @@ def test_export_opfs(controller_opf_setup):
     with patch('pathlib.Path.exists', return_value=True), \
             patch('pathlib.Path.mkdir'), \
             patch('pandas.ExcelWriter') as excel_writer_mock, \
-            patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock:
+            patch('pandas.DataFrame.to_excel', autospec=True) as to_excel_mock, \
+            patch.object(controller,"compare_power_series", MagicMock()) as mock_compare_power_series:
         controller.export_opfs()
 
     # Checks that ExcelWriter has been called up with the correct file
@@ -626,3 +627,4 @@ def test_export_opfs(controller_opf_setup):
     }, index=datetime_index)
 
     pd.testing.assert_frame_equal(written_df, expected_df)
+    mock_compare_power_series.assert_called_once_with(2015, 2016)
