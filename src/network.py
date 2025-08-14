@@ -324,8 +324,22 @@ class Network:
         df_lines_errors = pd.DataFrame(lines_errors_data)
 
         excel_path = simulation_dir_path / POWERS_ERRORS_EXCEL_FILE
-        with pd.ExcelWriter(excel_path) as writer:
+        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             df_sectors_errors.to_excel(writer, sheet_name="sectors_errors", index=False)
             df_lines_errors.to_excel(writer, sheet_name="lines_errors", index=False)
 
-        print(f"\nErrors simulated vs historical powers exported at : {excel_path}")
+            workbook = writer.book
+            worksheet_sector = workbook["sectors_errors"]
+            worksheet_line = workbook["lines_errors"]
+
+            for idx, col_name in enumerate(df_sectors_errors.columns, start=1):
+                if "relative" in col_name.lower():
+                    for cells in worksheet_sector.iter_cols(min_col=idx, max_col=idx, min_row=2):
+                        for cell in cells:
+                            cell.number_format = "0.0%"
+
+            for idx, col_name in enumerate(df_lines_errors.columns, start=1):
+                if "relative" in col_name.lower():
+                    for cells in worksheet_line.iter_cols(min_col=idx, max_col=idx, min_row=2):
+                        for cell in cells:
+                            cell.number_format = "0.0%"

@@ -301,35 +301,38 @@ def test_store_simulated_power(sector_setup):
         assert sector._current_power == 0
 
 @pytest.mark.parametrize(
-    "historical, simulated, expected_corr, expected_mae, expected_max_rel, expected_mean_rel",
-    [  # test 1 : Same series
+    "historical, simulated, expected_corr, expected_mae, expected_max_rel, expected_mean_rel, expected_rel_total, expected_cum_rel",
+    [
+        # test 1 : Same series
         (pd.Series([1, 2, 3, 4, 5]),
          pd.Series([1, 2, 3, 4, 5]),
-         1.0, 0.0, 0.0, 0.0),
+         1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
 
         # test 2 : Opposite values
         (pd.Series([1, 2, 3, 4, 5]),
          pd.Series([-1, -2, -3, -4, -5]),
-         -1.0, 6.0, 2.0, 2.0),
+         -1.0, 6.0, 2.0, 2.0, 2.0, 2.0),
 
         # test 3 : Constant shift
         (pd.Series([1, 2, 3, 4, 5]),
          pd.Series([2, 3, 4, 5, 6]),
-         1.0, 1.0, 1.0, (1 / 1 + 1 / 2 + 1 / 3 + 1 / 4 + 1 / 5) / 5),  # ≈ 0.456
+         1.0, 1.0, 1/1, (1/1 + 1/2 + 1/3 + 1/4 + 1/5)/5, -1/3, 1/3),
 
         # test 4 : Noise
         (pd.Series([10, 20, 30, 40, 50]),
          pd.Series([12, 18, 29, 41, 48]),
          np.corrcoef([10, 20, 30, 40, 50], [12, 18, 29, 41, 48])[0, 1],
          np.mean(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48]))),
-         np.max(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array(
-             [10, 20, 30, 40, 50])),
-         np.mean(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array(
-             [10, 20, 30, 40, 50]))),
+         np.max(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array([10, 20, 30, 40, 50])),
+         np.mean(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array([10, 20, 30, 40, 50])),
+         np.sum(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.sum([10, 20, 30, 40, 50]),
+         np.sum(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48]))) / np.sum([10, 20, 30, 40, 50])),
     ]
 )
-def test_compare_power_series_parametrized(historical, simulated, expected_corr, expected_mae, expected_max_rel,
-                                           expected_mean_rel):
+def test_compare_power_series_parametrized(
+    historical, simulated, expected_corr, expected_mae,
+    expected_max_rel, expected_mean_rel, expected_rel_total, expected_cum_rel
+):
     zone_name = "FR"
     fake_path = Path("fake_path")
     sector = Sector(sector_name="RES", historical_powers=historical, is_controllable=False, is_load=True)
@@ -343,8 +346,10 @@ def test_compare_power_series_parametrized(historical, simulated, expected_corr,
     assert result["load"] == sector.is_load
     assert result["correlation_coefficient"] == round(float(expected_corr), 3)
     assert result["mean_absolute_error_MW"] == round(float(expected_mae), 3)
-    assert result["max_relative_error"] == round(float(expected_max_rel), 3)
-    assert result["mean_relative_error"] == round(float(expected_mean_rel), 3)
+    assert result["max_relative_power_error"] == round(float(expected_max_rel), 3)
+    assert result["mean_relative_power_error"] == round(float(expected_mean_rel), 3)
+    assert result["relative_total_energy_error"] == round(float(expected_rel_total), 3)
+    assert result["cumulative_relative_energy_error"] == round(float(expected_cum_rel), 3)
 
 
 def test_plot_power_errors(sector_setup):
@@ -357,15 +362,18 @@ def test_plot_power_errors(sector_setup):
 
     zone = "FR"
     errors_data = {
-        "max_relative_error": 0.11,
-        "mean_relative_error": 0.07
+        "max_relative_power_error": 0.11,
+        "mean_relative_power_error": 0.07,
+        "relative_total_energy_error": 0.1,
+        "cumulative_relative_energy_error": 0.1,
     }
     fake_path = Path("fake_path")
-    expected_filename = f"{zone}_{sector.name}_comparison.png".replace(" ", "_")
+    expected_filename = f"{zone}_{sector.name}_generator_comparison.png".replace(" ", "_")
     expected_path = fake_path / expected_filename
 
     with patch("matplotlib.pyplot.savefig") as mock_savefig, \
-            patch("matplotlib.pyplot.close") as mock_close:
+            patch("matplotlib.pyplot.close") as mock_close, \
+            patch("pathlib.Path.mkdir"):
         sector.plot_power_errors(zone, errors_data, fake_path)
 
     mock_savefig.assert_called_once_with(expected_path)

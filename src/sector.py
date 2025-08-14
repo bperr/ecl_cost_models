@@ -374,12 +374,34 @@ class Sector:
 
         :return zone_error_data: Dictionary containing error metrics for the sector
         """
-        absolute_error = np.abs(self.historical_powers - self.simulated_powers)
-        mean_absolute_error = np.mean(absolute_error)
-        relative_error = (absolute_error / self.historical_powers.replace(0, np.nan)).dropna()
+        historical_energy = self._historical_powers.sum()  # MWh
+        simulated_energy = self._simulated_powers.sum()  # MWh
+        # If linear interpolation between power values :
+        # historical_energy = np.trapezoid(self._historical_powers.values, dx=1)  # dx=1h
+        # simulated_energy = np.trapezoid(self._historical_powers.values, dx=1)  # dx=1h
 
-        max_relative_error = relative_error.max()
-        mean_relative_error = relative_error.mean()
+        power_error_series = self.historical_powers - self.simulated_powers  # MW
+        energy_error = historical_energy - simulated_energy  # MWh
+
+        # Relative Energy error - difference of simulated & historical energy (sum of powers) - (value - MWh)
+        relative_total_energy_difference = energy_error / abs(historical_energy) if historical_energy != 0 else (
+            0 if simulated_energy == 0 else np.nan)
+        # Relative Energy of the power error - energy (sum) of differences of powers - (value - MWh)
+        cumulative_relative_energy_error = abs(power_error_series).sum() / abs(historical_energy) if (
+                historical_energy != 0) else (0 if (power_error_series == 0).all() else np.nan)
+
+        # Mean absolute error of powers - (value - MW)
+        power_MAE = np.mean(abs(power_error_series))
+        # Relative error of powers - (time series - MW)
+        relative_power_error_series = (
+            pd.Series(0, index=self._historical_powers.index)
+            if (self._historical_powers == 0).all() and (self._simulated_powers == 0).all()
+            else (abs(power_error_series) / abs(self._historical_powers).replace(0, np.nan)).dropna()
+        )
+
+        # Maximum and mean relative error of powers (value - MW)
+        max_relative_power_error = relative_power_error_series.max()
+        mean_relative_power_error = relative_power_error_series.mean()
 
         correlation_coef = np.nan
         if np.std(self.historical_powers) != 0 and np.std(self.simulated_powers) != 0:
@@ -389,9 +411,11 @@ class Sector:
             "zone": zone_name,
             "sector": self.name,
             "load": self.is_load,
-            "max_relative_error": round(float(max_relative_error), 3),
-            "mean_relative_error": round(float(mean_relative_error), 3),
-            "mean_absolute_error_MW": round(float(mean_absolute_error), 3),
+            "relative_total_energy_error": round(float(relative_total_energy_difference), 3),
+            "cumulative_relative_energy_error": round(float(cumulative_relative_energy_error), 3),
+            "max_relative_power_error": round(float(max_relative_power_error), 3),
+            "mean_relative_power_error": round(float(mean_relative_power_error), 3),
+            "mean_absolute_error_MW": round(float(power_MAE), 3),
             "correlation_coefficient": round(float(correlation_coef), 3),
         }
 
@@ -412,12 +436,14 @@ class Sector:
         """
         path.mkdir(parents=True, exist_ok=True)
 
-        max_relative_error = sector_errors_data["max_relative_error"]
-        mean_relative_error = sector_errors_data["mean_relative_error"]
+        max_relative_power_error = sector_errors_data["max_relative_power_error"]
+        mean_relative_power_error = sector_errors_data["mean_relative_power_error"]
+        relative_total_energy_error = sector_errors_data["relative_total_energy_error"]
+        cumulative_relative_energy_error = sector_errors_data["cumulative_relative_energy_error"]
 
         plt.figure(figsize=(10, 6))
-        self.historical_powers.plot(label='Historical', linewidth=2)
-        self.simulated_powers.plot(label='Simulation', linewidth=2, linestyle='--')
+        self.historical_powers.plot(label='Historical', linewidth=2, drawstyle='steps-post')
+        self.simulated_powers.plot(label='Simulation', linewidth=2, linestyle='--', drawstyle='steps-post')
 
         plt.legend()
         plt.title(f"{self.name} - {zone_name}")
@@ -427,12 +453,16 @@ class Sector:
         if self.historical_powers.min() > 0 and self.simulated_powers.min() > 0:
             plt.ylim(bottom=0)
 
-        error_text = f"Max error : {max_relative_error:.2%}\nMean error : {mean_relative_error:.2%}"
+        error_text = (f"Max error : {max_relative_power_error:.2%}\n"
+                      f"Mean error : {mean_relative_power_error:.2%}\n"
+                      f"Cumulative energy error : {cumulative_relative_energy_error:.2%}\n"
+                      f"Total energy error : {relative_total_energy_error:.2%}")
         plt.text(0.05, 0.95, error_text, transform=plt.gca().transAxes,
                  fontsize=10, verticalalignment='top', bbox=dict(facecolor='white', alpha=0.6))
 
         # Saving
-        file_name = f"{zone_name}_{self.name}_comparison.png".replace(" ", "_")
+        load = "load" if self._is_load else "generator"
+        file_name = f"{zone_name}_{self.name}_{load}_comparison.png".replace(" ", "_")
         file_path = path / f"{file_name}"
         plt.tight_layout()
         plt.savefig(file_path)
