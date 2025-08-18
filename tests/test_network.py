@@ -74,7 +74,8 @@ def test_add_zone(network_setup):
                                                      False)
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       setup["sectors_historical_powers"]["hydro pump storage"],
-                                                      True)
+                                                      True,
+                                                      opf_mode=False)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()
@@ -119,7 +120,8 @@ def test_add_zone_updates_datetime_index(network_setup):
                                                      False)
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       sectors_historical_powers["hydro pump storage"],
-                                                      True)
+                                                      True,
+                                                      opf_mode=True)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()

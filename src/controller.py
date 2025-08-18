@@ -1,3 +1,4 @@
+import time
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -119,6 +120,13 @@ class Controller:
                     row_prod_min[idx + 2] = prices[0]
                     row_prod_max[idx + 2] = prices[1]
 
+            for idx in range(len(sector_to_index)):
+                if isinstance(row_cons_min[idx + 2], float) and isinstance(row_prod_min[idx + 2], float):
+                    if row_cons_min[idx + 2] > row_prod_min[idx + 2]:
+                        price_no_power = (row_cons_min[idx + 2] + row_prod_min[idx + 2]) / 2
+                        row_cons_min[idx + 2] = price_no_power
+                        row_prod_min[idx + 2] = price_no_power
+
             data += [row_cons_max, row_cons_min, row_prod_min, row_prod_max]
 
             plot_folder_path = self._work_dir / f"results {current_date}" / f"Plots for years {start_year}-{end_year}"
@@ -159,33 +167,40 @@ class Controller:
                 cons_full, cons_none, prod_none, prod_full = prices
 
                 # Check production prices
-                if prod_none is None or prod_full is None:
-                    raise ValueError(f"Missing production prices for '{sector}' in zone '{zone}'")
-                if prod_none > prod_full:
+                if None not in (prod_none, prod_full) and (prod_none > prod_full):
                     raise ValueError(
-                        f"Logical error: Prod_none > Prod_full for '{sector}' in zone '{zone}' "
+                        f"Input prices error: Prod_none > Prod_full for sector '{sector}' in zone '{zone}' "
                         f"({prod_none} > {prod_full})"
+                    )
+                if None in (prod_none, prod_full) and prod_none != prod_full:
+                    raise ValueError(
+                        f"Input prices error: A production price is missing for sector '{sector}' in zone '{zone}' "
+                        f"(Prod_none, Prod_full) = ({prod_none}, {prod_full})"
                     )
 
                 if sector in self._storages:
                     # Check consumption prices
-                    if cons_none is None or cons_full is None:
-                        raise ValueError(f"Missing consumption prices for storage sector '{sector}' in zone '{zone}'")
-                    if cons_full > cons_none:
+                    if None not in (cons_full, cons_none) and (cons_full > cons_none):
                         raise ValueError(
-                            f"Logical error: Cons_full > Cons_none for '{sector}' in zone '{zone}' "
+                            f"Input prices error: Cons_full > Cons_none for storage sector '{sector}' in zone '{zone}' "
                             f"({cons_full} > {cons_none})"
                         )
-                    if cons_none > prod_none:
+                    if None in (cons_full, cons_none) and cons_full != cons_none:
                         raise ValueError(
-                            f"Logical error: Cons_none > Prod_none for '{sector}' in zone '{zone}' "
+                            f"Input prices error: A consumption price is missing for storage sector '{sector}' "
+                            f"in zone '{zone}' (Cons_full, Cons_none) = ({cons_full}, {cons_none})"
+                        )
+                    if None not in (cons_none, prod_none) and (cons_none > prod_none):
+                        raise ValueError(
+                            f"Input prices error: Cons_none > Prod_none for storage sector '{sector}' in zone '{zone}' "
                             f"({cons_none} > {prod_none})"
                         )
                 else:
                     # If sector is not storage, it should not have consumption prices
                     if cons_full is not None or cons_none is not None:
                         raise ValueError(
-                            f"Sector '{sector}' in zone '{zone}' is not storage but has consumption prices."
+                            f"Input prices error: Sector '{sector}' in zone '{zone}' is not storage "
+                            f"but has consumption prices ({cons_full}, {cons_none})"
                         )
 
     def build_network_model(self, start_year: int, end_year: int):
@@ -305,11 +320,27 @@ class Controller:
         for a given period, the results are exported.
         """
         for start_year, end_year in self._years:
+            t0 = time.time()
+            print(f"Running OPF for years {start_year}-{end_year} ")
             model_built = self.build_network_model(start_year, end_year)
             if not model_built:
                 continue
+            n_runs = 0
+            failed_timesteps = list()
             for timestep in self._network.datetime_index:
-                self._network.run_opf(timestep)
+                try:
+                    self._network.run_opf(timestep)
+                    n_runs += 1
+                    if n_runs % 24 == 0:
+                        computation_time = time.time() - t0
+                        mn = int(computation_time // 60)
+                        s = int(computation_time - 60 * mn)
+                        print(f"{n_runs} OPF ({n_runs // 24} days) run in {mn}mn{s}s")
+                except:  # FIXME use specific exception and understand why some timesteps fail
+                    failed_timesteps.append(timestep)
+                    warnings.warn(f"OPF failure for timestep {timestep}")
+            if len(failed_timesteps) > 0:
+                print(f"{len(failed_timesteps)} OPF did not converge:\n{failed_timesteps}")
             self.export_opfs()
 
     def export_opfs(self):

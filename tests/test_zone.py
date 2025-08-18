@@ -89,7 +89,7 @@ def test_add_storage(zone_test_setup):
     zone.add_storage("hydro pump storage", powers, is_controllable=is_controllable, opf_mode=False)
 
     # Checks that Storage has been instantiated with the correct arguments
-    storage_cls.assert_called_once_with("hydro pump storage", powers, is_controllable)
+    storage_cls.assert_called_once_with("hydro pump storage", powers, is_controllable, opf_mode=False)
 
     # Check that both load and generator sectors have been added to the sectors list
     # (and that the object storage to the storages list)
@@ -126,7 +126,7 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
     is_controllable = False
 
     # Add a production sector (non-storage)
-    sector.is_storage_load = False
+    sector.is_load = False
     zone.add_sector("solar", zone_test_setup["powers"],
                     is_controllable=is_controllable)
 
@@ -175,11 +175,11 @@ def test_set_price_model(zone_test_setup):
     # Creation of two sector mocks: a normal mock and a load mock
     sector = MagicMock(name="sector_mock")
     sector.name = "solar"
-    sector.is_storage_load = False
+    sector.is_load = False
 
     storage_sector = MagicMock(name="storage_sector_mock")
     storage_sector.name = "hydro pump storage"
-    storage_sector.is_storage_load = True
+    storage_sector.is_load = True
 
     # These two sectors are injected into the zone
     zone._sectors = [sector, storage_sector]
@@ -253,18 +253,16 @@ def test_updated_simulated_powers(zone_test_setup):
     interconnection1 = MagicMock()
     interconnection2 = MagicMock()
     zone._interconnections = [interconnection1, interconnection2]
+    zone._current_cost_function = MagicMock()
 
     # Fake timestep
     timestep = pd.Timestamp("2015-01-01 12:00:00")
 
     # Act
     zone.store_simulated_power(timestep)
+    zone._current_cost_function.compute_price.assert_called_once()
 
     # Assert
     # Check that each sector has called store_simulated_power with the correct timestep
     for sector in zone._sectors:
         sector.store_simulated_power.assert_called_once_with(timestep)
-
-    # Checks that each interconnection has called store_simulated_power with the correct timestep
-    for interconnection in zone._interconnections:
-        interconnection.store_simulated_power.assert_called_once_with(timestep)

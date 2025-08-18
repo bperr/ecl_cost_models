@@ -2,9 +2,6 @@ from __future__ import annotations  # Postpones annotation checking
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-from matplotlib import pyplot as plt
-
 from src.opf_utils import LineCostFunction, TOL, minimise_trinomial
 
 if TYPE_CHECKING:  # False at runtime

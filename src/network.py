@@ -136,11 +136,9 @@ class Network:
         iter_max = 100
         i = 0
         while not converged and i < iter_max:
-            print(f"========= Iter {i} =============")
             cost_change = 0
             for line in self._interconnections:
                 cost_change += line.optimise_export(timestep)
-            print(f"-- Cost change: {cost_change}")
 
             assert cost_change < TOL  # <= 0
             if abs(cost_change) < TOL:

@@ -2,7 +2,10 @@ from typing import Sequence
 
 import numpy as np
 
-TOL = 1e-3  # Tolerance for equality and unequality assumptions
+TOL = 1e-3  # Tolerance for equality and inequality assumptions
+DEMAND_PRICE = 3000
+FAKE_PROD_PRICE = 4000
+FAKE_CONS_PRICE = -1000
 
 
 def build_equations(points, prices) -> tuple:

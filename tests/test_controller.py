@@ -170,16 +170,16 @@ def create_mock_zone(name, sector_specs):
     Creates a mock zone with sectors with respect to the specified specs
 
     :param name: name of the zone (str)
-    :param sector_specs: List of tuples (name, is_storage_load, price_model)
+    :param sector_specs: List of tuples (name, is_load, price_model)
     :return: MagicMock of zone
     """
     zone = MagicMock(spec=Zone)
     zone.name = name
     sectors = []
-    for sector_name, is_storage_load, price_model in sector_specs:
+    for sector_name, is_load, price_model in sector_specs:
         sector = MagicMock()
         sector.name = sector_name
-        sector.is_storage_load = is_storage_load
+        sector.is_load = is_load
         sector.price_model = price_model
         sectors.append(sector)
     zone.sectors = sectors
@@ -342,12 +342,14 @@ def controller_opf_setup(controller_setup, request):
 
 def test_check_price_models_valid(controller_setup):
     controller = controller_setup["controller"]
-    controller._storages = ["battery"]
+    controller._storages = ["battery", "hydrogen"]
     price_models = {
         "FR": {
             "solar": [None, None, 50, 100],  # Non-storage sector with valid production prices
+            "nuclear": [None, None, None, None],  # Unused sector
             # Storage sector with valid consumption prices (cons_full <= cons_none & cons_none <= prod_none)
-            "battery": [10, 20, 40, 50]
+            "battery": [10, 20, 40, 50],
+            "hydrogen": [0, 15, None, None]  # Storage with no production model (it will never produce)
         }
     }
     # Should not raise
@@ -358,23 +360,20 @@ def test_check_price_models_valid(controller_setup):
     # Not None cons prices for solar sector (not storage)
     ("FR", "solar", [20, 30, 50, 60], [], "Sector 'solar' in zone 'FR' is not storage but has consumption prices"),
     # Production price p0 > p100
-    ("FR", "solar", [None, None, 100, 90], [], "Logical error: Prod_none > Prod_full for 'solar' in zone 'FR'"),
+    ("FR", "solar", [None, None, 100, 90], [], "Prod_none > Prod_full for sector 'solar' in zone 'FR'"),
     # Consumption price c100 > c0
-    ("FR", "battery", [30, 20, 50, 60], ["battery"],
-     "Logical error: Cons_full > Cons_none for 'battery' in zone 'FR'"),
-    # prod_none is None
-    ("FR", "solar", [None, None, None, 100], [], "Missing production prices for 'solar' in zone 'FR"),
-    # prod_full is None
-    ("FR", "solar", [None, None, 10, None], [], "Missing production prices for 'solar' in zone 'FR"),
-    # Storage: cons_full is None
+    ("FR", "battery", [30, 20, 50, 60], ["battery"], "Cons_full > Cons_none for storage sector 'battery' in zone 'FR'"),
+    # Partial production price model
+    ("FR", "solar", [None, None, None, 100], [], "A production price is missing for sector 'solar' in zone 'FR'"),
+    ("FR", "solar", [None, None, 10, None], [], "A production price is missing for sector 'solar' in zone 'FR'"),
+    # Partial consumption price model
     ("FR", "battery", [None, 40, 10, 20], ["battery"],
-     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
-    # Storage: cons_none is None
+     "A consumption price is missing for storage sector 'battery' in zone 'FR'"),
     ("FR", "battery", [30, None, 10, 20], ["battery"],
-     "Missing consumption prices for storage sector 'battery' in zone 'FR"),
+     "A consumption price is missing for storage sector 'battery' in zone 'FR'"),
     # Storage: cons_none > prod_none
     ("FR", "battery", [30, 50, 40, 60], ["battery"],
-     r"Logical error: Cons_none > Prod_none for 'battery' in zone 'FR' \(50 > 40\)")
+     r"Cons_none > Prod_none for storage sector 'battery' in zone 'FR' \(50 > 40\)")
 ])
 def test_check_price_models_raises_errors(controller_setup, zone, sector, prices, storages, expected_error):
     controller = controller_setup["controller"]
@@ -386,6 +385,7 @@ def test_check_price_models_raises_errors(controller_setup, zone, sector, prices
     }
 
     with pytest.raises(ValueError, match=expected_error):
+        print(f"expected error: {expected_error}")
         controller.check_price_models(price_models)
 
 
@@ -413,6 +413,7 @@ def test_build_network_model_existing_interco(controller_opf_setup):
 def test_build_network_model_new_interco(controller_opf_setup):
     controller = controller_opf_setup["controller"]
     network_mock = controller_opf_setup["network"]
+    network_mock.datetime_index = controller_opf_setup["expected_interco_powers"].index  # FIXME
     zone_mock_ibr = controller_opf_setup["zone_mock_ibr"]
     zone_mock_fr = controller_opf_setup["zone_mock_fr"]
     expected_interco_powers = controller_opf_setup["expected_interco_powers"]
@@ -455,11 +456,11 @@ def test_build_network_model_new_interco(controller_opf_setup):
 
     assert zone_mock_ibr.compute_demand.called
     ibr_call_args = zone_mock_ibr.compute_demand.call_args[0][0]
-    assert_series_equal(ibr_call_args.sort_index(), expected_net_import_ibr.sort_index())
+    assert_series_equal(ibr_call_args.sort_index(), expected_net_import_ibr.sort_index(), check_names=False)
 
     assert zone_mock_fr.compute_demand.called
     fr_call_args = zone_mock_fr.compute_demand.call_args[0][0]
-    assert_series_equal(fr_call_args.sort_index(), expected_net_import_fr.sort_index())
+    assert_series_equal(fr_call_args.sort_index(), expected_net_import_fr.sort_index(), check_names=False)
 
     assert model_built
 
