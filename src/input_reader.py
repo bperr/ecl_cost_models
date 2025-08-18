@@ -373,8 +373,6 @@ class InputReader:
 
         for year_key in sheet_names:
             df = pd.read_excel(file_path, sheet_name=year_key)
-
-            year_key = year_key
             results[year_key] = {}
 
             for _, row in df.iterrows():

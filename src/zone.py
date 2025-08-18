@@ -298,39 +298,6 @@ class Zone:
         # power interval.
         self._current_cost_function = NodeCostFunction(points_node_scope=power_cost_points, prices=price_intervals)
 
-        # ------  Uncomment his for debugging purposes ------- #
-        # # Plot the price/power curve and the power/cost curve of the zone (with threshold powers points in blue and
-        # # "normal" powers in orange)
-        # #
-        # price_power_points = [(price_intervals[0][0], power_cost_points[0][0])]
-        # for i in range(len(price_intervals)):
-        #     power, _ = power_cost_points[i + 1]
-        #     _, price = price_intervals[i]
-        #     price_power_points.append((price, power))
-        # power_cost_points = np.array(power_cost_points)  # Only threshold power/cost points
-        # price_power_points = np.array(price_power_points)  # Only threshold price/power points
-        #
-        # price_power_curve = []  # Any power/cost points
-        # for power in np.linspace(power_cost_points[:, 0].min(), power_cost_points[:, 0].max(), 50):
-        #     price_power_curve.append((power, self._current_cost_function.compute_cost(power)))
-        # price_power_curve = np.array(price_power_curve)
-        #
-        # # Plot
-        # plt.figure()
-        # plt.plot(price_power_points[:, 0], price_power_points[:, 1])
-        # plt.xlabel("Price (€/MWh)")
-        # plt.ylabel("Power (MW)")
-        # plt.title(f"Net export (MW) depending on {self._name} market price")
-        # plt.show()
-        #
-        # plt.figure()
-        # plt.scatter(power_cost_points[:, 0], power_cost_points[:, 1])
-        # plt.scatter(price_power_curve[:, 0], price_power_curve[:, 1], s=5)
-        # plt.xlabel("Power (MW)")
-        # plt.ylabel("Cost (€)")
-        # plt.title(f"Cost in {self._name} depending on its net export")
-        # plt.show()
-
     def market_optimisation(self, timestep: pd.Timestamp):
         """
         Computes the actual power of generators and loads based on a fixed market price.

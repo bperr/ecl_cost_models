@@ -385,7 +385,6 @@ def test_check_price_models_raises_errors(controller_setup, zone, sector, prices
     }
 
     with pytest.raises(ValueError, match=expected_error):
-        print(f"expected error: {expected_error}")
         controller.check_price_models(price_models)
 
 

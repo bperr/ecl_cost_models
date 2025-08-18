@@ -120,10 +120,15 @@ class Controller:
                     row_prod_min[idx + 2] = prices[0]
                     row_prod_max[idx + 2] = prices[1]
 
+            # Check storages no power prices
             for idx in range(len(sector_to_index)):
                 if isinstance(row_cons_min[idx + 2], float) and isinstance(row_prod_min[idx + 2], float):
                     if row_cons_min[idx + 2] > row_prod_min[idx + 2]:
                         price_no_power = (row_cons_min[idx + 2] + row_prod_min[idx + 2]) / 2
+                        warnings.warn(
+                            f"Incoherent no power prices in {zone.name}-{sectors[idx]} : production starts before the "
+                            f"end of consumption ({row_prod_min[idx+2]} vs {row_cons_min[idx+2]}). Mean price is set "
+                            f"for both no power prices.")
                         row_cons_min[idx + 2] = price_no_power
                         row_prod_min[idx + 2] = price_no_power
 

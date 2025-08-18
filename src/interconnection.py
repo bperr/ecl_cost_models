@@ -111,46 +111,6 @@ class Interconnection:
         best_export, best_cost = self._optimise_export(from_cost_function=from_cost_function,
                                                        to_cost_function=to_cost_function)
 
-        # ------  Uncomment his for debugging purposes ------- #
-        # # Plot the total cost function with threshold powers points in blue and "normal" powers in orange
-        # #
-        # threshold_powers = sorted(filter(
-        #     lambda pw: abs(pw) <= self._power_rating,
-        #     list(np.array(from_cost_function.points)[:, 0])
-        #     + list(map(lambda pw: -pw, np.array(to_cost_function.points)[:, 0]))
-        # ))
-        # # Compute total cost on threshold powers
-        # power_total_cost_points = []
-        # for power in threshold_powers:
-        #     try:
-        #         cost = from_cost_function.compute_cost(power) + to_cost_function.compute_cost(-power)
-        #         power_total_cost_points.append((power, cost))
-        #     except AssertionError:
-        #         pass
-        # # Compute total cost on any power
-        # power_total_cost_curve = []
-        # for power in np.linspace(-self._power_rating, self._power_rating, 200):
-        #     try:
-        #         cost = from_cost_function.compute_cost(power) + to_cost_function.compute_cost(-power)
-        #         power_total_cost_curve.append((power, cost))
-        #     except AssertionError:
-        #         pass
-        # # Convert to numpy array
-        # power_total_cost_points = np.array(power_total_cost_points)
-        # power_total_cost_curve = np.array(power_total_cost_curve)
-        #
-        # print(f"Old: {self._current_power} MW --> {current_cost} €")
-        # print(f"New: {best_export} MW --> {best_cost} €")
-        #
-        # # Plot
-        # plt.figure()
-        # plt.scatter(power_total_cost_points[:, 0], power_total_cost_points[:, 1])
-        # plt.scatter(power_total_cost_curve[:, 0], power_total_cost_curve[:, 1], s=5)
-        # plt.xlabel("Power (MW)")
-        # plt.ylabel("Cost (€)")
-        # plt.title(f"Total cost depending on {self._zone_from.name} net export to {self._zone_to.name}")
-        # plt.show()
-
         cost_change = best_cost - current_cost
 
         if cost_change > TOL:  # >0
