@@ -57,7 +57,7 @@ def make_sector(name, price_model, is_storage_load):
 
 def test_add_zone(network_setup):
     setup = network_setup
-    network = Network()
+    network = Network(opf_mode=False)
 
     # Add zone
     network.add_zone(zone_name="FR",
@@ -74,7 +74,8 @@ def test_add_zone(network_setup):
                                                      False)
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       setup["sectors_historical_powers"]["hydro pump storage"],
-                                                      True)
+                                                      True,
+                                                      opf_mode=False)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()
@@ -83,7 +84,7 @@ def test_add_zone(network_setup):
 
 def test_add_zone_updates_datetime_index(network_setup):
     setup = network_setup
-    network = Network()
+    network = Network(opf_mode=True)
 
     timestamps = pd.DatetimeIndex([
         Timestamp("01/01/2015  12:00:00"),
@@ -119,7 +120,8 @@ def test_add_zone_updates_datetime_index(network_setup):
                                                      False)
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       sectors_historical_powers["hydro pump storage"],
-                                                      True)
+                                                      True,
+                                                      opf_mode=True)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()
@@ -132,7 +134,7 @@ def test_add_zone_updates_datetime_index(network_setup):
 
 
 def test_build_price_models(network_setup):
-    network = Network()
+    network = Network(opf_mode=False)
     zone = network_setup["zone"]
 
     network._zones[zone.name] = zone
@@ -145,14 +147,14 @@ def test_build_price_models(network_setup):
 
 
 def test_build_price_models_raises_when_no_zones():
-    network = Network()
+    network = Network(opf_mode=False)
     with pytest.raises(ValueError, match="No zones available to build price models."):
         network.build_price_models((0, 100, 0, 100, 10))
 
 
 def test_set_price_model(network_setup):
     # Network object creation
-    network = Network()
+    network = Network(opf_mode=True)
     network._zones = {"FR": network_setup["zone"]}
 
     # Mock price models to set

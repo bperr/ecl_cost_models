@@ -678,8 +678,8 @@ def test_read_price_models_user_creates_expected_dictionary_structure(tmp_path, 
     # Assert ExcelFile and read_excel are called as expected
     assert read_excel_mock.call_count == 2
     read_excel_mock.assert_has_calls([  # Check the parameter in each call
-        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2015", index_col=0),
-        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2016", index_col=0),
+        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2015"),
+        call(fake_folder_path / "Output_prices.xlsx", sheet_name="2016"),
     ])
     excel_file_mock.assert_called_once_with(fake_folder_path / "Output_prices.xlsx")
 

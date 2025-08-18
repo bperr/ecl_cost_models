@@ -5,6 +5,7 @@ import pandas as pd
 
 PROD_FOLDER_NAME = "countries_power_production_by_sector_2015_2019"
 PRICES_FOLDER_NAME = "annual_spot_prices_by_country_2015_2019"
+INPUT_EXCEL_NAME = "User_inputs.xlsx"
 OUTPUT_EXCEL_NAME = "Output_prices.xlsx"
 MAP_TO_ALPHA2_FILE_NAME = "eu_countries_alpha2_codes.xlsx"
 INTERCO_FOLDER_NAME = "interconnections_power_ratings_and_powers_2015_2019"
@@ -101,7 +102,7 @@ class InputReader:
             - self._prices_init = {"2015-2016" : (0, 100, 0, 100, 10)}
         """
 
-        file_path = self._work_dir / "User_inputs.xlsx"
+        file_path = self._work_dir / INPUT_EXCEL_NAME
 
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -370,10 +371,8 @@ class InputReader:
         file_path = folder_path / OUTPUT_EXCEL_NAME
         sheet_names = pd.ExcelFile(file_path).sheet_names
 
-        for sheet_name in sheet_names:
-            df = pd.read_excel(file_path, sheet_name=sheet_name, index_col=0)
-
-            year_key = sheet_name
+        for year_key in sheet_names:
+            df = pd.read_excel(file_path, sheet_name=year_key)
             results[year_key] = {}
 
             for _, row in df.iterrows():

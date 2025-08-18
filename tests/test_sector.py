@@ -34,12 +34,12 @@ def sector_setup():
 
     # Sector instance in production mode
     sector_prod = Sector(sector_name="solar", historical_powers=powers_prod, is_controllable=True,
-                         is_storage_load=False)
+                         is_load=False)
     sector_prod._availabilities = availabilities
 
     # Sector instance in consumption mode
     sector_cons = Sector(sector_name="hydro pump storage", historical_powers=powers_cons, is_controllable=False,
-                         is_storage_load=True)
+                         is_load=True)
     sector_cons._availabilities = availabilities
 
     return {
@@ -150,7 +150,7 @@ def test_price_model_accuracy_on_linear_relation():
     # Linear relationship between powers and prices
     historical_prices = pd.Series(50 + normalized_powers * 50, index=idx)  # price range from 50 to 100
 
-    sector = Sector("solar", historical_powers=historical_powers, is_controllable=False, is_storage_load=False)
+    sector = Sector("solar", historical_powers=historical_powers, is_controllable=False, is_load=False)
     sector._availabilities = availabilities
 
     # The model must find price_no_power ≈ 50 and price_full_power ≈ 100
@@ -172,7 +172,7 @@ def test_price_model_with_noise():
     availabilities = pd.Series([1000] * 20, index=idx)
     prices = pd.Series(50 + normalized_powers * 50, index=idx)  # price range from 50 to 100
 
-    sector = Sector("solar", historical_powers=powers, is_storage_load=False, is_controllable=False)
+    sector = Sector("solar", historical_powers=powers, is_load=False, is_controllable=False)
     sector._availabilities = availabilities
     sector.build_price_model(prices, prices_init=(0, 100, 0, 100, 10), zone_name="EU")
 
@@ -196,7 +196,7 @@ def test_price_model_step_behavior():
     availabilities = pd.Series(1000, index=historical_prices.index)
 
     # sector creation
-    sector = Sector("gas", historical_powers, is_storage_load=False, is_controllable=True)
+    sector = Sector("gas", historical_powers, is_load=False, is_controllable=True)
     sector._availabilities = availabilities
 
     # price model construction
@@ -217,7 +217,7 @@ def test_full_power_all_the_time():
     powers = pd.Series(1000, index=prices.index)
     availabilities = pd.Series(1000, index=prices.index)
 
-    sector = Sector("RES", powers, is_storage_load=False, is_controllable=False)
+    sector = Sector("RES", powers, is_load=False, is_controllable=False)
     sector._availabilities = availabilities
 
     sector.build_price_model(prices, prices_init=(0, 120, 0, 120, 10), zone_name="EU")

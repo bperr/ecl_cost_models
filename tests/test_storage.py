@@ -37,6 +37,7 @@ def storage_setup():
     patch.stopall()
 
 
+# TODO add test with opf_mode=True and check indexes
 def test_storage_initializes_load_and_generator(storage_setup):
     powers = storage_setup["powers"]
     sector_cls = storage_setup["sector_cls"]
@@ -44,13 +45,13 @@ def test_storage_initializes_load_and_generator(storage_setup):
     sector_generator = storage_setup["sector_generator"]
 
     # Creation of the object storage
-    storage = Storage("hydro pump storage", powers, is_controllable=True)
+    storage = Storage("hydro pump storage", powers, is_controllable=True, opf_mode=False)
 
     # Check that Sector class has been called properly
     assert sector_cls.call_count == 2
 
     expected_calls = [
-        call("hydro pump storage", ANY, is_controllable=True, is_storage_load=True),
+        call("hydro pump storage", ANY, is_controllable=True, is_load=True),
         call("hydro pump storage", ANY, is_controllable=True)
     ]
 

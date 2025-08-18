@@ -8,8 +8,14 @@ from src.controller import Controller
 
 
 if __name__ == "__main__":
-    work_dir = Path("C:/Users/a.faivre/PycharmProjects/ECL cost models/Working")
-    db_dir = Path("C:/Users/a.faivre/PycharmProjects/ECl cost models/Database")
+    work_dir = Path("C:/Users/b.perreyon/Documents/ECL cost models/wk dir/new")
+    db_dir = Path("C:/Users/b.perreyon/Documents/ECL cost models/database/fixed")
+    # work_dir = Path("C:/Users/n.barla/Documents/Local_codes/ecl_cost_models/instance/studies/study_1")
+    # db_dir = Path("C:/Users/n.barla/Documents/Local_codes/ecl_cost_models/instance/database/2025-08")
+
+    # controller = Controller(work_dir=work_dir, db_dir=db_dir)
+    # controller.build_price_models()
+    # exit(0)
 
     controller = Controller(work_dir=work_dir, db_dir=db_dir)
-    controller.build_price_models()
+    controller.run_opfs()
