@@ -244,8 +244,37 @@ class Interconnection:
                 x, cost = x12, cost12
         return x, cost
 
-    def reset_power(self):
+    def init_current_power(self, timestep: pd.Timestamp):
+        self._current_power = self._historical_powers[timestep]
+
+
+OUT_ZONE_NAME = "OUTSIDE"
+
+
+class ExteriorInterconnection(Interconnection):
+    """
+    This class allows to represent a connection with zones that are not modelled.
+    The net export of this connection is fixed.
+    """
+
+    def __init__(self, zone_from: Zone, zone_to: Zone, historical_power_flows: pd.Series):
+        power_rating = 1e9
+        assert zone_to.name == OUT_ZONE_NAME
+        super().__init__(zone_from, zone_to, power_rating, historical_power_flows)
+
+    def optimise_export(self, timestep: pd.Timestamp) -> float:
         """
-        The export in the line is reset to 0
+        For an :class:`ExteriorInterconnection`, there is nothing to optimise: the export remains the same as the
+        historical one. Thus, set_power is not called and the cost benefit is zero because nothing has changed.
+
+        Parameters
+        ----------
+        timestep: (unused) Timestamp currently simulated.
+
+        Returns
+        -------
+        Zero, as nothing is optimised here.
         """
-        self._current_power = 0
+        return 0
+
+

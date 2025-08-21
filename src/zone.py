@@ -3,7 +3,7 @@ import warnings
 import pandas as pd
 
 from src.interconnection import Interconnection
-from src.opf_utils import NodeCostFunction, TOL, assert_approx, DEMAND_PRICE, FAKE_PROD_PRICE, FAKE_CONS_PRICE
+from src.opf_utils import DEMAND_PRICE, FAKE_CONS_PRICE, FAKE_PROD_PRICE, NodeCostFunction, TOL, assert_approx
 from src.sector import Sector
 from src.storage import Storage
 
@@ -126,6 +126,8 @@ class Zone:
         :param net_imports: Time series of net power imports (positive = import, negative = export).
                             If net_imports is None or not supplied, the series is considered to be zero
                             (no exchanges).
+
+        :return: Time steps with a negative demand
         """
         if len(self._power_demand) == 0:
             # The production from all sectors is summed
@@ -142,6 +144,10 @@ class Zone:
             demand_sector.set_price_model((DEMAND_PRICE, DEMAND_PRICE))
             demand_sector.build_availabilities()
             self._sectors.append(demand_sector)
+
+            # Return time steps for which the demand is negative. They must be skipped
+            negative_demand = self._power_demand[self._power_demand < 0]
+            return negative_demand.index
 
     def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, opf_mode: bool):
         """

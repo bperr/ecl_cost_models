@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.interconnection import Interconnection
+from src.interconnection import ExteriorInterconnection, Interconnection
 from src.opf_utils import TOL
 from src.zone import Zone
 
@@ -30,6 +30,16 @@ class Network:
     @property
     def datetime_index(self):
         return self._datetime_index
+
+    def remove_invalid_datetime(self, invalid_datetime: set[pd.Timestamp]):
+        """
+        Remove from self._datetime_index a list of timestamp that cannot be simulated.
+
+        Parameters
+        ----------
+        invalid_datetime: Timestamp that cannot be simulated.
+        """
+        self._datetime_index = self._datetime_index.drop(invalid_datetime)
 
     def add_zone(self, zone_name: str, sectors_historical_powers: pd.DataFrame, storages: list[str],
                  controllable_sectors: list[str], historical_prices: pd.Series):
@@ -87,6 +97,23 @@ class Network:
         zone_to.add_interconnection(interconnection)
         zone_from.add_interconnection(interconnection)
 
+    def add_exterior_interconnection(self, zone_from: Zone, zone_to: Zone, historical_power_flows: pd.Series):
+        """
+        Add a interconnection with the 'Exterior' zone.
+
+        Parameters
+        ----------
+        zone_from: A zone in the network.
+        zone_to: A the 'Exterior' zone, not stored inside the network
+        historical_power_flows: pd.Series containing the historical net power flow from 'zone from' to 'zone to'.
+        """
+        interconnection = ExteriorInterconnection(zone_from, zone_to, historical_power_flows)
+        self._interconnections.append(interconnection)
+
+        # interconnection is added to both concerned zones interconnections list
+        zone_to.add_interconnection(interconnection)
+        zone_from.add_interconnection(interconnection)
+
     def build_price_models(self, prices_init: tuple):
         """
         Builds price models for all sectors of all the zones in the network.
@@ -125,7 +152,7 @@ class Network:
         for zone in self._zones.values():
             zone.reset_powers()
         for interco in self._interconnections:
-            interco.reset_power()
+            interco.init_current_power(timestep)
 
         # Run market in each zone
         for zone in self._zones.values():
