@@ -299,7 +299,7 @@ class Controller:
                     ].set_index("Time")["Power (MW)"]
 
                 # Net power : forward - backward.
-                # We create a new series object to enforce its index (all timestamps that needs to be simulated)
+                # We create a new series object to enforce its index (all timestamps that need to be simulated)
                 interco_powers = pd.Series(flow_forward.sub(flow_backward, fill_value=0),
                                            index=self._network.datetime_index).fillna(0)
 
