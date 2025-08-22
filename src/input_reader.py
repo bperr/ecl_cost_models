@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.interconnection import OUT_ZONE_NAME
+
 PROD_FOLDER_NAME = "countries_power_production_by_sector_2015_2019"
 PRICES_FOLDER_NAME = "annual_spot_prices_by_country_2015_2019"
 INPUT_EXCEL_NAME = "User_inputs.xlsx"
@@ -528,11 +530,13 @@ class InputReader:
 
         # Verify if the sheet exists
         file_path_data = self._db_dir / INTERCO_FOLDER_NAME / INTERCO_POWERS_FILE_NAME
-        xls = pd.ExcelFile(file_path_data)
 
         all_years_data = []
+        sheets_to_read = set()
+        for (year_min, year_max) in self._years:
+            sheets_to_read.update([str(year) for year in range(year_min, year_max + 1)])
 
-        for sheet_name in xls.sheet_names:
+        for sheet_name in sheets_to_read:
             # Load data from the specified sheet
             df_interco_raw = pd.read_excel(file_path_data, sheet_name=sheet_name)
 
@@ -563,6 +567,8 @@ class InputReader:
             # Map countries to zones
             df_interco_renamed["zone_from"] = df_interco_renamed["country_from"].map(country_to_zone)
             df_interco_renamed["zone_to"] = df_interco_renamed["country_to"].map(country_to_zone)
+            df_interco_renamed["zone_from"].fillna(OUT_ZONE_NAME, inplace=True)
+            df_interco_renamed["zone_to"].fillna(OUT_ZONE_NAME, inplace=True)
 
             # Remove intra-zone flows
             df_interco_filtered = df_interco_renamed[df_interco_renamed["zone_from"] != df_interco_renamed["zone_to"]]

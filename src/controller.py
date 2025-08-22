@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 
 from src.input_reader import InputReader
+from src.interconnection import OUT_ZONE_NAME
 from src.network import Network
+from src.zone import Zone
 
 SIMULATED_POWERS_DIRECTORY_ROOT = 'countries_simulated_powers_by_sector'
 SIMULATED_POWERS_FILE_ROOT = 'simulated_powers_by_sector'
@@ -127,8 +129,8 @@ class Controller:
                         price_no_power = (row_cons_min[idx + 2] + row_prod_min[idx + 2]) / 2
                         warnings.warn(
                             f"Incoherent no power prices in {zone.name}-{sectors[idx]} : production starts before the "
-                            f"end of consumption ({row_prod_min[idx+2]} vs {row_cons_min[idx+2]}). Mean price is set "
-                            f"for both no power prices.")
+                            f"end of consumption ({row_prod_min[idx + 2]} vs {row_cons_min[idx + 2]}). Mean price is "
+                            "set for both no power prices.")
                         row_cons_min[idx + 2] = price_no_power
                         row_prod_min[idx + 2] = price_no_power
 
@@ -162,7 +164,6 @@ class Controller:
             - cons_none must be less than or equal to prod_none
 
         :param price_models: Dictionary containing the price models per zone and sector
-        :param storages: List of sector names that are storages
 
         :raises ValueError: If any of the logical consistency checks fail
         """
@@ -297,14 +298,32 @@ class Controller:
                     (self._interco_powers['zone_from'] == zone_to) & (self._interco_powers['zone_to'] == zone_from)
                     ].set_index("Time")["Power (MW)"]
 
-                # Net power : forward - backward
-                interco_powers = flow_forward.sub(flow_backward, fill_value=0).sort_index()
+                # Net power : forward - backward.
+                # We create a new series object to enforce its index (all timestamps that need to be simulated)
+                interco_powers = pd.Series(flow_forward.sub(flow_backward, fill_value=0),
+                                           index=self._network.datetime_index).fillna(0)
 
                 self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
                                                   power_rating, interco_powers)
 
+            # Add interconnection with exterior
+            exterior = Zone(OUT_ZONE_NAME, historical_prices=pd.Series())
+            for zone_name, zone in self._network.zones.items():
+                flow_forward = self._interco_powers[(self._interco_powers['zone_from'] == zone_name) & (
+                            self._interco_powers['zone_to'] == OUT_ZONE_NAME)].set_index("Time")["Power (MW)"]
+
+                flow_backward = self._interco_powers[(self._interco_powers['zone_from'] == OUT_ZONE_NAME) & (
+                        self._interco_powers['zone_to'] == zone_name)].set_index("Time")["Power (MW)"]
+
+                # Net power : forward - backward
+                net_export_to_exterior = pd.Series(flow_forward.sub(flow_backward, fill_value=0),
+                                                   index=self._network.datetime_index).fillna(0)
+
+                self._network.add_exterior_interconnection(zone, exterior, net_export_to_exterior)
+
             # ------- add loads -------
             # Demand = production + net import
+            invalid_datetime = set()
             for zone_name, zone in self._network.zones.items():
                 net_import = pd.Series(0, index=self._network.datetime_index)
                 for interconnection in zone.interconnections:
@@ -312,7 +331,18 @@ class Controller:
                         net_import -= interconnection.historical_powers
                     elif interconnection.zone_to.name == zone_name:
                         net_import += interconnection.historical_powers
-                zone.compute_demand(net_import)
+                negative_demand_datetime = zone.compute_demand(net_import)
+                invalid_datetime.update(negative_demand_datetime)
+
+            # Check the number of time steps to remove
+            missing_steps += len(invalid_datetime)
+            if missing_steps > missing_steps_limit:
+                warnings.warn(
+                    f"More than {missing_steps_limit} timesteps cannot be used due to negative computed demand for "
+                    f"this time period. The simulation for {start_year}-{end_year} cannot be performed"
+                )
+                return False
+            self._network.remove_invalid_datetime(invalid_datetime)
 
             return True
 
@@ -331,21 +361,14 @@ class Controller:
             if not model_built:
                 continue
             n_runs = 0
-            failed_timesteps = list()
             for timestep in self._network.datetime_index:
-                try:
-                    self._network.run_opf(timestep)
-                    n_runs += 1
-                    if n_runs % 24 == 0:
-                        computation_time = time.time() - t0
-                        mn = int(computation_time // 60)
-                        s = int(computation_time - 60 * mn)
-                        print(f"{n_runs} OPF ({n_runs // 24} days) run in {mn}mn{s}s")
-                except:  # FIXME use specific exception and understand why some timesteps fail
-                    failed_timesteps.append(timestep)
-                    warnings.warn(f"OPF failure for timestep {timestep}")
-            if len(failed_timesteps) > 0:
-                print(f"{len(failed_timesteps)} OPF did not converge:\n{failed_timesteps}")
+                self._network.run_opf(timestep)
+                n_runs += 1
+                if n_runs % 24 == 0:
+                    computation_time = time.time() - t0
+                    mn = int(computation_time // 60)
+                    s = int(computation_time - 60 * mn)
+                    print(f"{n_runs} OPF ({n_runs // 24} days) run in {mn}mn{s}s")
             self.export_opfs()
 
     def export_opfs(self):

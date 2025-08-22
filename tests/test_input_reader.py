@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from pandas import Timestamp
 
-from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWER_RATINGS_FILE_NAME, INTERCO_POWERS_FILE_NAME
+from src.input_reader import INTERCO_FOLDER_NAME, INTERCO_POWERS_FILE_NAME, INTERCO_POWER_RATINGS_FILE_NAME
 from src.input_reader import InputReader
 from src.input_reader import MAP_TO_ALPHA2_FILE_NAME
 
@@ -852,11 +852,7 @@ def test_read_interco_powers(setup):
     work_dir = setup["data"]["fake directories"]["fake work dir"]
     input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
     input_reader._zones = {'FR': ['FR'], 'IBR': ['ES', 'PT']}
-
-    # Mock ExcelFile to simulate existing sheets
-    fake_excel_file = MagicMock()
-    fake_excel_file.sheet_names = ["2015"]
-    excel_file_mock = patch('pandas.ExcelFile', return_value=fake_excel_file).start()
+    input_reader._years = [(2015, 2015)]
 
     # Create a fake interco power dataset
     fake_excel_df = pd.DataFrame({
@@ -887,7 +883,6 @@ def test_read_interco_powers(setup):
     }).sort_values("Time")
 
     fake_file_path_data = db_dir / INTERCO_FOLDER_NAME / INTERCO_POWERS_FILE_NAME
-    excel_file_mock.assert_called_once_with(fake_file_path_data)
 
     read_excel_mock.assert_called_once_with(fake_file_path_data, sheet_name='2015')
     map_full_name_mock.assert_called_once()
@@ -900,6 +895,7 @@ def test_keep_first_value_interco_powers_if_duplicated_timestep(setup):
     work_dir = setup["data"]["fake directories"]["fake work dir"]
     input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
     input_reader._zones = {'FR': ['FR'], 'ES': ['ES']}
+    input_reader._years = [(2015, 2015)]
 
     # Create a fake interco power dataset
     fake_excel_df = pd.DataFrame({
@@ -911,12 +907,9 @@ def test_keep_first_value_interco_powers_if_duplicated_timestep(setup):
 
     # Run function
     fake_name_code_mapping_dict = {'France': 'FR', 'Spain': 'ES'}
-    fake_excel_file = MagicMock()
-    fake_excel_file.sheet_names = ["2015"]
     with patch("pandas.read_excel", return_value=fake_excel_df), \
             patch("src.input_reader.InputReader.map_full_name_to_alpha2_code",
-                  return_value=fake_name_code_mapping_dict), \
-            patch('pandas.ExcelFile', return_value=fake_excel_file):
+                  return_value=fake_name_code_mapping_dict):
         historical_powers = input_reader.read_interco_powers()
 
         # Expected dataframe, the values of the second "2015-01-01 01:00:00" timestep should not be taken into account
