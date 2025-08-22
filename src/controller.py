@@ -342,7 +342,7 @@ class Controller:
                     f"this time period. The simulation for {start_year}-{end_year} cannot be performed"
                 )
                 return False
-            # self._network.remove_invalid_datetime(invalid_datetime)
+            self._network.remove_invalid_datetime(invalid_datetime)
 
             return True
 
