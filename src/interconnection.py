@@ -308,10 +308,6 @@ class Interconnection:
         max_relative_power_error = relative_power_error_series.max()
         mean_relative_power_error = relative_power_error_series.mean()
 
-        correlation_coef = np.nan
-        if np.std(self.historical_powers) != 0 and np.std(self._simulated_powers) != 0:
-            correlation_coef = np.corrcoef(self.historical_powers, self._simulated_powers)[0, 1]
-
         line_errors_data = {
             "line": f"{self._zone_from.name}-{self._zone_to.name}",
             "relative_total_energy_error": round(float(relative_total_energy_difference), 3),
@@ -319,7 +315,6 @@ class Interconnection:
             "max_relative_power_error": round(float(max_relative_power_error), 3),
             "mean_relative_power_error": round(float(mean_relative_power_error), 3),
             "mean_absolute_error_MW": round(float(power_MAE), 3),
-            "correlation_coefficient": round(float(correlation_coef), 3),
         }
 
         self.plot_power_errors(line_errors_data, path)
@@ -343,8 +338,9 @@ class Interconnection:
         cumulative_relative_energy_error = line_errors_data["cumulative_relative_energy_error"]
 
         plt.figure(figsize=(10, 6))
-        self._historical_powers.plot(label='Historical', linewidth=2, drawstyle='steps-post')
-        self._simulated_powers.plot(label='Simulation', linewidth=2, linestyle='--', drawstyle='steps-post')
+        self._historical_powers.plot(label='Historical', linewidth=0.5, drawstyle='steps-post')
+        self._simulated_powers.plot(label='Simulation', linewidth=0.5, linestyle='--', drawstyle='steps-post')
+        plt.axhline(0, color='red', linestyle='-', linewidth=1.5, alpha=0.7)
 
         plt.legend()
         plt.title(f"interconnection {self._zone_from.name}-{self._zone_to.name}")

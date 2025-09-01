@@ -1,6 +1,8 @@
 import warnings
 from pathlib import Path
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 from src.interconnection import Interconnection
 from src.opf_utils import DEMAND_PRICE, FAKE_CONS_PRICE, FAKE_PROD_PRICE, NodeCostFunction, TOL, assert_approx
@@ -495,8 +497,17 @@ class Zone:
         }]
         """
         zone_error_data = []
+        path.mkdir(parents=True, exist_ok=True)
+
+        storages_names = []
+
+        for storage in self._storages:
+            zone_error_data.append(storage.compare_power_series(self._name, path))
+            storages_names.append(storage.name)
 
         for sector in self._sectors:
-            zone_error_data.append(sector.compare_power_series(self._name, path))
+            if sector.name not in storages_names:
+                zone_error_data.append(sector.compare_power_series(self._name, path))
 
         return zone_error_data
+

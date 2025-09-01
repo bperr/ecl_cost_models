@@ -7,6 +7,8 @@ from pathlib import Path
 from src.interconnection import Interconnection
 from src.opf_utils import TOL, bounded_value
 from src.zone import Zone
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.styles import PatternFill
 
 POWERS_ERRORS_EXCEL_FILE = "simulated_powers_errors.xlsx"
 SECTORS_SIMULATION_ERRORS_DIR = 'errors_simulated_powers_by_sector'
@@ -324,22 +326,48 @@ class Network:
         df_lines_errors = pd.DataFrame(lines_errors_data)
 
         excel_path = simulation_dir_path / POWERS_ERRORS_EXCEL_FILE
+
+        # Définition des couleurs
+        green_fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")  # vert clair
+        orange_fill = PatternFill(start_color="FFD580", end_color="FFD580", fill_type="solid")  # orange clair
+        red_fill = PatternFill(start_color="FF7F7F", end_color="FF7F7F", fill_type="solid")  # rouge clair
+
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             df_sectors_errors.to_excel(writer, sheet_name="sectors_errors", index=False)
             df_lines_errors.to_excel(writer, sheet_name="lines_errors", index=False)
 
             workbook = writer.book
-            worksheet_sector = workbook["sectors_errors"]
-            worksheet_line = workbook["lines_errors"]
 
-            for idx, col_name in enumerate(df_sectors_errors.columns, start=1):
-                if "relative" in col_name.lower():
-                    for cells in worksheet_sector.iter_cols(min_col=idx, max_col=idx, min_row=2):
-                        for cell in cells:
-                            cell.number_format = "0.0%"
+            # Parcourir toutes les feuilles écrites
+            for sheet_name, df in {
+                "sectors_errors": df_sectors_errors,
+                "lines_errors": df_lines_errors,
+            }.items():
+                worksheet = workbook[sheet_name]
 
-            for idx, col_name in enumerate(df_lines_errors.columns, start=1):
-                if "relative" in col_name.lower():
-                    for cells in worksheet_line.iter_cols(min_col=idx, max_col=idx, min_row=2):
-                        for cell in cells:
-                            cell.number_format = "0.0%"
+                # Chercher les colonnes contenant "relative"
+                for idx, col_name in enumerate(df.columns, start=1):
+                    if "relative" in col_name.lower():
+                        # Appliquer format pourcentage
+                        for cells in worksheet.iter_cols(min_col=idx, max_col=idx, min_row=2):
+                            for cell in cells:
+                                cell.number_format = "0.0%"
+
+                        # Définir la plage de données (sans l'entête)
+                        col_letter = worksheet.cell(row=1, column=idx).column_letter
+                        data_range = f"{col_letter}2:{col_letter}{worksheet.max_row}"
+
+                        # Formules Excel avec ABS()
+                        worksheet.conditional_formatting.add(
+                            data_range,
+                            FormulaRule(formula=[f"=ABS({col_letter}2)<0.1"], fill=green_fill)
+                        )
+                        worksheet.conditional_formatting.add(
+                            data_range,
+                            FormulaRule(formula=[f"=AND(ABS({col_letter}2)>=0.1,ABS({col_letter}2)<=0.25)"],
+                                        fill=orange_fill)
+                        )
+                        worksheet.conditional_formatting.add(
+                            data_range,
+                            FormulaRule(formula=[f"=ABS({col_letter}2)>0.25"], fill=red_fill)
+                        )
