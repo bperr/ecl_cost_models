@@ -42,7 +42,8 @@ class Network:
         self._datetime_index = self._datetime_index.drop(invalid_datetime)
 
     def add_zone(self, zone_name: str, sectors_historical_powers: pd.DataFrame, storages: list[str],
-                 controllable_sectors: list[str], historical_prices: pd.Series):
+                 controllable_sectors: list[str], historical_prices: pd.Series,
+                 energy_ratings: dict, mean_inflows: dict):
         """
         Adds a new zone to the network with its sectors and storages, it includes all the powers data for the sectors
         and all the prices data for the zone
@@ -52,6 +53,8 @@ class Network:
         :param storages: List of sector names that are storages
         :param controllable_sectors: List of sector names that are controllable
         :param historical_prices: Historical prices for the zone
+        :param energy_ratings: Energy rating per storage. Used to run OPF but not to build price models.
+        :param mean_inflows: Constant natural charging per storage
         """
         zone = Zone(zone_name, historical_prices)
         self._zones[zone_name] = zone
@@ -74,7 +77,9 @@ class Network:
             is_controllable = sector_name in controllable_sectors
             if sector_name in storages:
                 zone.add_storage(sector_name, sectors_historical_powers[sector_name], is_controllable,
-                                 opf_mode=self._is_opf_mode)
+                                 opf_mode=self._is_opf_mode,
+                                 # energy_rating is not necessary to build price models
+                                 energy_rating=energy_ratings.get(zone, 0), mean_inflow=mean_inflows.get(zone, 0))
             else:
                 zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable)
 
@@ -151,6 +156,7 @@ class Network:
         # Initialise the network (no export)
         for zone in self._zones.values():
             zone.reset_powers()
+            zone.update_storages_availability(time_step=timestep)
         for interco in self._interconnections:
             interco.init_current_power(timestep)
 
@@ -182,6 +188,7 @@ class Network:
         # Store results
         for zone in self.zones.values():
             zone.store_simulated_power(timestep)
+            zone.update_storages_energy()
         for interconnection in self._interconnections:
             interconnection.store_simulated_power(timestep)
 

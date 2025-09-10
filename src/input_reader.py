@@ -13,6 +13,9 @@ MAP_TO_ALPHA2_FILE_NAME = "eu_countries_alpha2_codes.xlsx"
 INTERCO_FOLDER_NAME = "interconnections_power_ratings_and_powers_2015_2019"
 INTERCO_POWER_RATINGS_FILE_NAME = "interconnections_power_ratings.xlsx"
 INTERCO_POWERS_FILE_NAME = "interconnections_powers_transferred_2015_2019.xlsx"
+STORAGE_FILE_NAME = "storages_energy_data.xlsx"
+
+GWh_to_MWh = 1000
 
 
 class InputReader:
@@ -583,3 +586,52 @@ class InputReader:
 
         self._interco_powers = pd.concat(all_years_data, ignore_index=True).sort_values("Time")
         return self._interco_powers
+
+    # ------ Storages energy ratings for OPF ------- #
+    def read_db_storages_energy_data(self):
+        """
+        Reads energy ratings per country and storage from an Excel file in the database directory.
+        Eac main sector declared as storage must have at least one of its detailed sectors which has energy ratings in
+        the database.
+
+        :return:
+            dictionary with 2 dictionaries as values. 1 for energy ratings and 1 for mean inflows:
+                dict[str, dict[str, float]]: Dictionary mapping zones names to energy rating per aggregated storage
+                dict[str, dict[str, float]]: Dictionary mapping zones names to mean inflow per aggregated storage
+        """
+        storages_energy_path = self._db_dir / STORAGE_FILE_NAME
+        storage_data = dict()
+
+        for sheet_name in ("Energy MWh", "Mean inflow MW"):
+            df = pd.read_excel(storages_energy_path, sheet_name=sheet_name)
+            assert df.columns[0] == "Country"
+            storages_names = list(df.columns[1:])
+
+            # Energy rating (or mean inflow) per country and sector
+            detailed_data = dict()  # {country name: {storage name: energy rating MWh or mean inflow MW}}
+            for _, row in df.iterrows():
+                detailed_data[row["Country"]] = {storage: row[storage] for storage in storages_names}
+
+            # Energy rating (or mean inflow) per zone and grouped sector
+            grouped_data = dict()
+            for zone, countries in self._zones.items():
+                zone_data = dict()
+                for group_name, sectors in self._sectors_group.items():
+                    if group_name in self._storages:
+                        if all([(sector not in storages_names) for sector in sectors]):
+                            raise ValueError(
+                                f"You want to consider the main sector '{group_name}' as a storage but none of its "
+                                f"detailed sectors ({sectors}) has {sheet_name} provided in {storages_energy_path}.\n"
+                                f"The possible storages are: {storages_names}"
+                            )
+                        grouped_value = 0  # for the group_name in the zone
+                        for country in countries:
+                            if country in detailed_data.keys():
+                                for sector in sectors:
+                                    if sector in detailed_data[country].keys():
+                                        grouped_value += detailed_data[country][sector]
+                        zone_data[group_name] = grouped_value
+                grouped_data[zone] = zone_data
+            storage_data[sheet_name] = grouped_data
+
+        return storage_data

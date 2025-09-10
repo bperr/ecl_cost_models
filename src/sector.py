@@ -31,9 +31,14 @@ class Sector:
         self._price_model = tuple()  # (price_no_power, price_full_power) in €/MWh
         self._is_controllable = is_controllable
         self._is_load = is_load
+        if is_load:
+            self._power_rating = - historical_powers.min()  # useful for storages
+        else:
+            self._power_rating = historical_powers.max()
 
         self._simulated_powers = pd.Series()  # in MW
-        self._availabilities = pd.Series()  # in MW
+        self._availabilities = pd.Series()  # in MW, built before the simulation if not storage
+        self._available_power: float | None = None  # in MW, updated each hour if storage
 
         # -- "Variable" attribute for OPF computation
         self._current_power = 0
@@ -54,18 +59,28 @@ class Sector:
         return self._is_load
 
     @property
+    def power_rating(self) -> float:  # > 0
+        return self._power_rating
+
+    @property
     def historical_powers(self):
         """Returns the sector historical power time series"""
         return self._historical_powers.copy()
 
-    @property
-    def available_powers(self):
-        """Returns the sector available power time series"""
-        return self._availabilities.copy()
+    def set_available_power(self, power: float):
+        self._available_power = power
+
+    def available_power(self, timestep: pd.Timestamp):
+        """Returns the sector available power at the required time step"""
+        if len(self._availabilities) == 0:  # Sector is a storage
+            assert self._available_power is not None
+            return self._available_power
+        else:
+            return self._availabilities[timestep]
 
     @property
     def simulated_powers(self):
-        """Returns the sector historical power time series"""
+        """Returns the sector stimulated power time series"""
         return self._simulated_powers
 
     @property
@@ -322,15 +337,16 @@ class Sector:
             plt.savefig(path)
             plt.close()
 
-    def store_simulated_power(self, timestep: pd.Timestamp):
+    def store_simulated_power(self, timestep: pd.Timestamp, extra_power: float = 0):
         """
         Updates the simulated powers series (produced by the sector) by storing the current power stored in
         self._current_power and calculated during the OPF at the specified timestep and then resets the current
         power to zero (so that the next timesteps data can be saved)
 
         :param timestep: The timestep at which the current power should be recorded
+        :param extra_power: If storage -> constrained production (if generator) or constrained consumption (if load)
         """
-        self._simulated_powers[timestep] = self._current_power
+        self._simulated_powers[timestep] = self._current_power + extra_power
         self._current_power = 0
 
     @property

@@ -922,3 +922,44 @@ def test_keep_first_value_interco_powers_if_duplicated_timestep(setup):
         }).sort_values("Time")
 
     pd.testing.assert_frame_equal(historical_powers, expected_df)
+
+
+def test_read_db_storages_energy_data(setup):
+    # -- Create mocks -- #
+    fake_energy_df = pd.DataFrame(columns=["Country", "hydro_pumped_storage", "hydro_water_reservoir", "battery"],
+                                  data=[
+                                      ["FR", 50, 500, 5],
+                                      ["BE", 10, 100, 1],
+                                      ["NL", 20, 200, 2],
+                                  ])
+    fake_inflow_df = pd.DataFrame(columns=["Country", "hydro_pumped_storage", "hydro_water_reservoir", "battery"],
+                                  data=[
+                                       ["FR", 5, 50, 0],
+                                       ["BE", 1, 10, 0],
+                                       ["NL", 2, 20, 0],
+                                  ])
+    read_excel_mock = patch("pandas.read_excel", side_effect=[fake_energy_df, fake_inflow_df]).start()
+
+    # Mock the zones directly
+    db_dir = setup["data"]["fake directories"]["fake db dir"]
+    work_dir = setup["data"]["fake directories"]["fake work dir"]
+    input_reader = InputReader(db_dir=db_dir, work_dir=work_dir)
+    input_reader._zones = {"FRA": ["FR"], "BNX": ["BE", "NL"]}
+    input_reader._sectors_group = {"hydro": ["hydro_pumped_storage", "hydro_water_reservoir"], "battery": ["battery"]}
+    input_reader._storages = {"hydro", "battery"}
+
+    # Run the function
+    storage_data = input_reader.read_db_storages_energy_data()
+
+    # -- Expected result: aggregated by zone and main sector-- #
+    expected_energy_data = {"FRA": {"hydro": 550, "battery": 5}, "BNX": {"hydro": 330, "battery": 3}}
+    expected_inflow_data = {"FRA": {"hydro": 55, "battery": 0}, "BNX": {"hydro": 33, "battery": 0}}
+
+    assert storage_data == {"Energy MWh": expected_energy_data, "Mean inflow MW": expected_inflow_data}
+
+    # Check 'read_excel' calls
+    assert read_excel_mock.call_count == 2  # One for 'Energy MWh' and once for 'Mean inflow MW'
+    read_excel_mock.assert_has_calls([  # Check the parameter in each call
+        call(db_dir / "storages_energy_data.xlsx", sheet_name="Energy MWh"),
+        call(db_dir / "storages_energy_data.xlsx", sheet_name="Mean inflow MW"),
+    ], any_order=True)

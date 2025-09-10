@@ -86,10 +86,12 @@ def test_add_storage(zone_test_setup):
     storage = zone_test_setup["storage"]
     is_controllable = False
 
-    zone.add_storage("hydro pump storage", powers, is_controllable=is_controllable, opf_mode=False)
+    zone.add_storage("hydro pump storage", powers, is_controllable=is_controllable, opf_mode=False,
+                     energy_rating=0, mean_inflow=0)
 
     # Checks that Storage has been instantiated with the correct arguments
-    storage_cls.assert_called_once_with("hydro pump storage", powers, is_controllable, opf_mode=False)
+    storage_cls.assert_called_once_with("hydro pump storage", powers, is_controllable, opf_mode=False,
+                                        energy_rating=0, mean_inflow=0)
 
     # Check that both load and generator sectors have been added to the sectors list
     # (and that the object storage to the storages list)
@@ -133,7 +135,8 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
     # Add a storage --> add 2 sectors (load and generator)
     storage.load.is_load = True  # Storage mock
     storage.generator.is_load = False
-    zone.add_storage("hydro pump storage", zone_test_setup["powers"], is_controllable=is_controllable, opf_mode=False)
+    zone.add_storage("hydro pump storage", zone_test_setup["powers"], is_controllable=is_controllable,
+                     opf_mode=False, energy_rating=0, mean_inflow=0)
 
     # Method to test
     zone.save_plots(tmp_path)
@@ -247,7 +250,13 @@ def test_updated_simulated_powers(zone_test_setup):
     # Mock sectors
     solar = MagicMock()
     nuclear = MagicMock()
-    zone._sectors = [solar, nuclear]
+    battery_gen = MagicMock()
+    battery_load = MagicMock()
+    storage = MagicMock()
+    storage.generator = battery_gen
+    storage.load = battery_load
+    zone._sectors = [solar, nuclear, battery_gen, battery_load]
+    zone._storages = [storage]
 
     # Mock interconnections
     interconnection1 = MagicMock()
@@ -259,10 +268,40 @@ def test_updated_simulated_powers(zone_test_setup):
     timestep = pd.Timestamp("2015-01-01 12:00:00")
 
     # Act
+    storage.constrained_production = 2
     zone.store_simulated_power(timestep)
     zone._current_cost_function.compute_price.assert_called_once()
 
     # Assert
     # Check that each sector has called store_simulated_power with the correct timestep
     for sector in zone._sectors:
-        sector.store_simulated_power.assert_called_once_with(timestep)
+        if sector is battery_gen:
+            sector.store_simulated_power.assert_called_once_with(timestep, extra_power=2)
+        else:
+            sector.store_simulated_power.assert_called_once_with(timestep, extra_power=0)
+
+
+def test_update_storages_availability(zone_test_setup):
+    zone = zone_test_setup["zone"]
+
+    # Mock sectors
+    storage = MagicMock()
+    zone._storages = [storage]
+
+    # Fake timestep
+    timestep = pd.Timestamp("2015-01-01 12:00:00")
+
+    zone.update_storages_availability(timestep)
+    # Check that each sector has called store_simulated_power with the correct timestep
+    storage.update_availabilities.assert_called_once_with(time_step=timestep)
+
+
+def test_update_storages_energy(zone_test_setup):
+    zone = zone_test_setup["zone"]
+
+    # Mock sectors
+    storage = MagicMock()
+    zone._storages = [storage]
+
+    zone.update_storages_energy()
+    storage.update_energy.assert_called_once()

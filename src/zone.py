@@ -149,7 +149,8 @@ class Zone:
             negative_demand = self._power_demand[self._power_demand < 0]
             return negative_demand.index
 
-    def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, opf_mode: bool):
+    def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, opf_mode: bool,
+                    energy_rating: float, mean_inflow: float):
         """
         Adds an energy storage unit to the zone. Updates the list of sectors accordingly.
         This includes both the charging (load) and discharging (generator) components that have the same sector name
@@ -157,11 +158,13 @@ class Zone:
         :param sector_name: Name of the storage unit
         :param historical_powers: Power time series of the storage (consumption and generation) in MW
         :param is_controllable: Indicates whether the storage behavior is controllable
+        :param energy_rating: Energy rating (in MW) of the storage. Used to run OPF but not to build price models.
+        :param mean_inflow: constant natural charging of the storage
         """
-        storage = Storage(sector_name, historical_powers, is_controllable, opf_mode=opf_mode)
-        storage.load.build_availabilities()
-        storage.generator.build_availabilities()
+        storage = Storage(sector_name, historical_powers, is_controllable, opf_mode=opf_mode,
+                          energy_rating=energy_rating, mean_inflow=mean_inflow)
         self._storages.append(storage)
+        # Availabilities are not built for storage
         self.sectors.append(storage.load)
         self.sectors.append(storage.generator)
 
@@ -185,8 +188,22 @@ class Zone:
 
         :param timestep: pd.Timestamp representing the current simulation timestep.
         """
+        generator_to_storage = dict()
+        load_to_storage = dict()
+        for storage in self._storages:
+            generator_to_storage[storage.generator] = storage
+            load_to_storage[storage.load] = storage
         for sector in self._sectors:
-            sector.store_simulated_power(timestep)
+            extra_power = 0  # Storage constrained production is not included in generator/load current power
+            if sector in generator_to_storage.keys():
+                constrained_production = generator_to_storage[sector].constrained_production
+                if constrained_production > 0:
+                    extra_power = constrained_production
+            elif sector in load_to_storage.keys():
+                constrained_production = load_to_storage[sector].constrained_production
+                if constrained_production < 0:
+                    extra_power = constrained_production  #
+            sector.store_simulated_power(timestep, extra_power=extra_power)
 
         assert self._current_cost_function is not None
         self._simulated_prices[timestep] = self._current_cost_function.compute_price(self._current_export)
@@ -235,6 +252,9 @@ class Zone:
             threshold_prices_list.extend(list(sector.price_model))
         threshold_prices_list = sorted(set(threshold_prices_list))
 
+        # Net constrained production due to the storages. Can be negative (constrained consumption)
+        net_constrained_production = sum([storage.constrained_production for storage in self._storages])
+
         # To compute the node cost function, we build in the first place its price/power curve by considering the
         # price_start and price_full of the loads and generators in the node. This is a piecewise linear function whose
         # "rupture" points are the threshold prices.
@@ -247,7 +267,8 @@ class Zone:
         # To satisfy all loads without producing anything in the node (leading to a cost of 0 in the node), the
         # following power is the opposite of what must be imported from the neighbour nodes.
         # This is the first point of the power/cost curve.
-        min_net_export = - sum(sector.available_powers[timestep] for sector in self._sectors if sector.is_load)
+        min_net_export = net_constrained_production - sum(sector.available_power(timestep)
+                                                          for sector in self._sectors if sector.is_load)
         last_power = min_net_export
         last_cost = 0  # Cost = 0 if full consumption and no production
         last_price = None
@@ -270,13 +291,13 @@ class Zone:
                     price_start, price_full = sector.price_model
                 if price_start == price == price_full:
                     # power_min += 0 because possible to have no production at this price
-                    power_max += sector.available_powers[timestep]
+                    power_max += sector.available_power(timestep)
                 elif price_start < price:
                     if price >= price_full:
                         factor = 1
                     else:  # price_start < price < price_full
                         factor = (price - price_start) / (price_full - price_start)
-                    power = sector.available_powers[timestep] * factor
+                    power = sector.available_power(timestep) * factor
                     power_min += power
                     power_max += power
 
@@ -345,10 +366,10 @@ class Zone:
                     factor = 1
                 else:  # price_start < price < price_full
                     factor = (price - sector_price_start) / (sector_price_full - sector_price_start)
-                power = sector.available_powers[timestep] * factor
+                power = sector.available_power(timestep) * factor
                 min_power = max_power = power
             elif price == sector_price_start == sector_price_full:
-                max_power = sector.available_powers[timestep]
+                max_power = sector.available_power(timestep)
             assert sector_name not in power_range_per_sector.keys()
             power_range_per_sector[sector_name] = (min_power, max_power)
 
@@ -377,7 +398,7 @@ class Zone:
                 if not sector.is_load:
                     sector.set_current_power(offer_range[0])
                 else:  # load shedding = demand - consumption
-                    sector.set_current_power(sector.available_powers[timestep] - offer_range[0])
+                    sector.set_current_power(sector.available_power(timestep) - offer_range[0])
                 sectors_with_power.append(sector_name)
 
         # Share loads & generators between real ones & storage ones
@@ -407,7 +428,7 @@ class Zone:
                     margin = max_offer - target_power  # >= 0
                     offer = max(offer_range[0], offer_range[1] - margin)  # as close as possible to offer_range[0]
                     if sector.is_load:  # offer is shedding
-                        actual_power = sector.available_powers[timestep] - offer  # consumption
+                        actual_power = sector.available_power(timestep) - offer  # consumption
                     else:
                         actual_power = offer  # production
                     sector.set_current_power(power=actual_power)
@@ -423,3 +444,11 @@ class Zone:
         """
         self._current_export = 0
         self._current_cost_function = None
+
+    def update_storages_availability(self, time_step: pd.Timestamp):
+        for storage in self._storages:
+            storage.update_availabilities(time_step=time_step)
+
+    def update_storages_energy(self):
+        for storage in self._storages:
+            storage.update_energy()

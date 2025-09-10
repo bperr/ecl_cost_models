@@ -5,6 +5,8 @@ import pytest
 from pandas import Timestamp
 
 from src.network import Network
+from src.zone import Zone
+from src.interconnection import Interconnection
 
 
 @pytest.fixture(scope="function")
@@ -64,7 +66,8 @@ def test_add_zone(network_setup):
                      sectors_historical_powers=setup["sectors_historical_powers"],
                      storages=setup["storages"],
                      controllable_sectors=setup["controllable_sectors"],
-                     historical_prices=setup["historical_prices"])
+                     historical_prices=setup["historical_prices"],
+                     energy_ratings={}, mean_inflows={})
 
     # Check that Zone has been created with the correct parameters
     setup["zone_cls"].assert_called_once_with("FR", setup["historical_prices"])
@@ -75,7 +78,8 @@ def test_add_zone(network_setup):
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       setup["sectors_historical_powers"]["hydro pump storage"],
                                                       True,
-                                                      opf_mode=False)
+                                                      opf_mode=False,
+                                                      energy_rating=0, mean_inflow=0)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()
@@ -110,7 +114,8 @@ def test_add_zone_updates_datetime_index(network_setup):
     network.add_zone(zone_name="FR", sectors_historical_powers=sectors_historical_powers,
                      storages=setup["storages"],
                      controllable_sectors=setup["controllable_sectors"],
-                     historical_prices=historical_prices)
+                     historical_prices=historical_prices,
+                     energy_ratings={}, mean_inflows={})
 
     # Check that Zone has been created with the correct parameters
     setup["zone_cls"].assert_called_once_with("FR", historical_prices)
@@ -121,7 +126,8 @@ def test_add_zone_updates_datetime_index(network_setup):
     setup["zone"].add_storage.assert_called_once_with("hydro pump storage",
                                                       sectors_historical_powers["hydro pump storage"],
                                                       True,
-                                                      opf_mode=True)
+                                                      opf_mode=True,
+                                                      energy_rating=0, mean_inflow=0)
 
     # Check that zone has been added to networks.zone
     assert setup["zone"] in network._zones.values()
@@ -172,5 +178,29 @@ def test_set_price_model(network_setup):
     network_setup["zone"].set_price_model.assert_called_once_with(price_models["FR"])
 
 
-def test_run_opf():
-    pass
+def test_run_opf_makes_expected_calls():
+    zone_1 = MagicMock(spec=Zone)
+    zone_2 = MagicMock(spec=Zone)
+    zone_3 = MagicMock(spec=Zone)
+
+    interconnection_1 = MagicMock(spec=Interconnection)
+    interconnection_1.optimise_export.side_effect = [-1, -.1, 0]
+    interconnection_2 = MagicMock(spec=Interconnection)
+    interconnection_2.optimise_export.side_effect = [0, 0, 0]
+
+    network = Network(opf_mode=True)
+    network._zones = {"1": zone_1, "2": zone_2, "3": zone_3}
+    network._interconnections = [interconnection_1, interconnection_2]
+
+    converged = network.run_opf(timestep="fake_time_step")
+    assert converged
+
+    for zone in (zone_1, zone_2, zone_3):
+        assert zone.market_optimisation.call_count == 2
+        assert zone.reset_powers.call_count == 1
+        assert zone.store_simulated_power.call_count == 1
+        assert zone.update_storages_availability.call_count == 1
+
+    for interconnection in (interconnection_1, interconnection_2):
+        assert interconnection.optimise_export.call_count == 3  # Three iterations of the loop
+        assert interconnection.store_simulated_power.call_count == 1

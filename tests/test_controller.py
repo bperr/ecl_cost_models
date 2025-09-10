@@ -124,13 +124,13 @@ def test_build_price_models(controller_setup):
     assert network.add_zone.call_count == 4
     network.add_zone.assert_has_calls([
         call(zone_name="IBR", storages=["hydro pump storage"], controllable_sectors=['hydro pump storage'],
-             sectors_historical_powers=ANY, historical_prices=ANY),
+             sectors_historical_powers=ANY, historical_prices=ANY, energy_ratings={}, mean_inflows={}),
         call(zone_name="FR", storages=["hydro pump storage"], controllable_sectors=['hydro pump storage'],
-             sectors_historical_powers=ANY, historical_prices=ANY),
+             sectors_historical_powers=ANY, historical_prices=ANY, energy_ratings={}, mean_inflows={}),
         call(zone_name="IBR", storages=["hydro pump storage"], controllable_sectors=['hydro pump storage'],
-             sectors_historical_powers=ANY, historical_prices=ANY),
+             sectors_historical_powers=ANY, historical_prices=ANY, energy_ratings={}, mean_inflows={}),
         call(zone_name="FR", storages=["hydro pump storage"], controllable_sectors=['hydro pump storage'],
-             sectors_historical_powers=ANY, historical_prices=ANY)
+             sectors_historical_powers=ANY, historical_prices=ANY, energy_ratings={}, mean_inflows={})
     ])
 
     # Verify series in calls

@@ -75,7 +75,7 @@ class Controller:
             for zone in self._zones:
                 self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
                                        storages=self._storages, controllable_sectors=self._controllable_sectors,
-                                       historical_prices=prices[zone])
+                                       historical_prices=prices[zone], energy_ratings=dict(), mean_inflows=dict())
 
             self._network.build_price_models(self._prices_init[f"{start_year}-{end_year}"])
             self.export_price_models(start_year, end_year, create_file, current_date)
@@ -232,6 +232,9 @@ class Controller:
             zone: df[(df.index.year >= start_year) & (df.index.year <= end_year)]
             for zone, df in self._powers.items()
         }
+        storages_data = self._input_reader.read_db_storages_energy_data()
+        storages_energy_ratings = storages_data["Energy MWh"]
+        storages_mean_inflows = storages_data["Mean inflow MW"]
 
         for zone in self._zones:
             if ('PL' in self._input_reader.get_countries_in_zone(zone)
@@ -243,7 +246,8 @@ class Controller:
             else:
                 self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
                                        storages=self._storages, controllable_sectors=self._controllable_sectors,
-                                       historical_prices=prices[zone])
+                                       historical_prices=prices[zone], energy_ratings=storages_energy_ratings[zone],
+                                       mean_inflows=storages_mean_inflows[zone])
 
         # We suppose that the production data is complete for all zones (8784 hours/year for leap years, 8760 otherwise)
         missing_steps = len(next(iter(powers.values()))) - len(self._network.datetime_index)
