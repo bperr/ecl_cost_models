@@ -126,20 +126,18 @@ def test_available_power(name, is_storage, is_load, is_controllable):
     sector = Sector(sector_name=name, historical_powers=historical_powers,
                     is_controllable=is_controllable, is_load=is_load)
     if is_storage:
-        for i in range(len(historical_powers)):
-            time_step = historical_powers.index[i]
+        for timestep in historical_powers.index:
             for available_power in (10, 20):
                 sector._available_power = available_power
-                assert sector.available_power(timestep=time_step) == available_power
+                assert sector.available_power(timestep=timestep) == available_power
     else:
         sector.build_availabilities()
-        for i in range(len(historical_powers)):
-            time_step = historical_powers.index[i]
+        for timestep, power in historical_powers.items():
             if is_controllable:
                 available_power = 200
             else:
-                available_power = historical_powers[i]
-            assert sector.available_power(timestep=time_step) == available_power
+                available_power = power
+            assert sector.available_power(timestep=timestep) == available_power
 
 
 # ------- Tests build_price_model -------

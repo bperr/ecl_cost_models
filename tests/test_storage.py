@@ -17,12 +17,31 @@ def storage_setup():
     powers = pd.Series([-100, 0, 150], index=timestamps)
 
     # Sector patch
-    sector = patch("src.storage.Sector")
-    sector_cls = sector.start()
+    # sector = patch("src.storage.Sector")
+    # sector_cls = sector.start()
 
     # Load et generator sectors mocks
     sector_load = MagicMock(name="sector_load")
     sector_generator = MagicMock(name="sector_generator")
+
+    # Configuring mock behaviour: 1st call for load, 2nd for generator
+    # sector_cls.side_effect = [sector_load, sector_generator]
+    sector_cls = patch("src.storage.Sector", side_effect=[sector_load, sector_generator]).start()
+    yield {
+        "powers": powers,
+        "sector_cls": sector_cls,
+        "sector_load": sector_load,
+        "sector_generator": sector_generator,
+    }
+
+    patch.stopall()
+
+
+@pytest.fixture(scope='function')
+def storage_setup2(storage_setup):
+    powers = storage_setup["powers"]
+    sector_load = storage_setup["sector_load"]
+    sector_generator = storage_setup["sector_generator"]
 
     sector_load.power_rating = 4
     sector_generator.power_rating = 4
@@ -36,17 +55,11 @@ def storage_setup():
     sector_generator.set_available_power.side_effect = gen_side_effect
     sector_load.set_available_power.side_effect = load_side_effect
 
-    # Configuring mock behaviour: 1st call for load, 2nd for generator
-    sector_cls.side_effect = [sector_load, sector_generator]
-
     storage = Storage(sector_name="hydro pump storage", historical_powers=powers, is_controllable=True, opf_mode=True,
                       energy_rating=10, mean_inflow=1)
 
     yield {
         "powers": powers,
-        "sector_cls": sector_cls,
-        "sector_load": sector_load,
-        "sector_generator": sector_generator,
         "storage": storage
     }
 
@@ -110,9 +123,9 @@ def test_build_energy_constraints():
     ]
 
 
-def test_update_availabilities(storage_setup):
-    powers = storage_setup["powers"]
-    storage = storage_setup["storage"]
+def test_update_availabilities(storage_setup2):
+    powers = storage_setup2["powers"]
+    storage = storage_setup2["storage"]
 
     assert storage._energy_constraints == [
         (0, 7),
@@ -134,7 +147,7 @@ def test_update_availabilities(storage_setup):
     ]:
         storage._stored_energy = stored_energy
         storage._current_hour = hour
-        storage.update_availabilities(time_step=powers.index[hour])
+        storage.update_availabilities(timestep=powers.index[hour])
 
         assert storage.constrained_production == constrained_power
         assert storage.generator.available_power == available_gen
@@ -150,8 +163,8 @@ def test_update_availabilities(storage_setup):
     (-1, 0, 0, 7),
     (-0.5, 0, 0.5, 7),
 ])
-def test_compute_new_energy(storage_setup, constrained_power, gen_power, load_power, next_energy):
-    storage = storage_setup["storage"]
+def test_compute_new_energy(storage_setup2, constrained_power, gen_power, load_power, next_energy):
+    storage = storage_setup2["storage"]
 
     storage.load.current_power = load_power
     storage.generator.current_power = gen_power
@@ -165,8 +178,8 @@ def test_compute_new_energy(storage_setup, constrained_power, gen_power, load_po
     assert storage._next_energy == expected_next_energy
 
 
-def test_update_energy_updates_expected_attributes(storage_setup):
-    storage = storage_setup["storage"]
+def test_update_energy_updates_expected_attributes(storage_setup2):
+    storage = storage_setup2["storage"]
 
     # Run function
     storage._next_energy = 10

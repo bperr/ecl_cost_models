@@ -445,9 +445,9 @@ class Zone:
         self._current_export = 0
         self._current_cost_function = None
 
-    def update_storages_availability(self, time_step: pd.Timestamp):
+    def update_storages_availability(self, timestep: pd.Timestamp):
         for storage in self._storages:
-            storage.update_availabilities(time_step=time_step)
+            storage.update_availabilities(timestep=timestep)
 
     def update_storages_energy(self):
         for storage in self._storages:

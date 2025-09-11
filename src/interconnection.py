@@ -276,5 +276,3 @@ class ExteriorInterconnection(Interconnection):
         Zero, as nothing is optimised here.
         """
         return 0
-
-

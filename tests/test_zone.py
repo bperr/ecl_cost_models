@@ -293,7 +293,7 @@ def test_update_storages_availability(zone_test_setup):
 
     zone.update_storages_availability(timestep)
     # Check that each sector has called store_simulated_power with the correct timestep
-    storage.update_availabilities.assert_called_once_with(time_step=timestep)
+    storage.update_availabilities.assert_called_once_with(timestep=timestep)
 
 
 def test_update_storages_energy(zone_test_setup):

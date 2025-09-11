@@ -80,7 +80,7 @@ class Sector:
 
     @property
     def simulated_powers(self):
-        """Returns the sector stimulated power time series"""
+        """Returns the sector simulated power time series"""
         return self._simulated_powers
 
     @property

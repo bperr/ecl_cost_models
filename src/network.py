@@ -156,7 +156,7 @@ class Network:
         # Initialise the network (no export)
         for zone in self._zones.values():
             zone.reset_powers()
-            zone.update_storages_availability(time_step=timestep)
+            zone.update_storages_availability(timestep=timestep)
         for interco in self._interconnections:
             interco.init_current_power(timestep)
 
@@ -187,8 +187,8 @@ class Network:
 
         # Store results
         for zone in self.zones.values():
-            zone.store_simulated_power(timestep)
             zone.update_storages_energy()
+            zone.store_simulated_power(timestep)
         for interconnection in self._interconnections:
             interconnection.store_simulated_power(timestep)
 

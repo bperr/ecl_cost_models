@@ -192,7 +192,7 @@ def test_run_opf_makes_expected_calls():
     network._zones = {"1": zone_1, "2": zone_2, "3": zone_3}
     network._interconnections = [interconnection_1, interconnection_2]
 
-    converged = network.run_opf(timestep="fake_time_step")
+    converged = network.run_opf(timestep="fake_timestep")
     assert converged
 
     for zone in (zone_1, zone_2, zone_3):

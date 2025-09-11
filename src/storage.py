@@ -29,7 +29,7 @@ class Storage:
         self._consumption_efficiency = consumption_efficiency
         self._stored_energy: float = energy_rating / 2  #: energy at the beginning of the hour
         self._next_energy: float | None = None  #: energy at the end of the hour
-        self.time_step_to_hour = {time_step: i for i, time_step in enumerate(historical_powers.index)}
+        self._timestep_to_hour = {timestep: i for i, timestep in enumerate(historical_powers.index)}
         self._current_hour = 0
         self._n_hours = len(historical_powers)
         self._constrained_production = 0  # MW, < 0 if constrained consumption
@@ -96,16 +96,16 @@ class Storage:
         """
         return self._constrained_production
 
-    def update_availabilities(self, time_step: pd.Timestamp):
+    def update_availabilities(self, timestep: pd.Timestamp):
         """
         Update the available power of the storage load and generator and the storage constrained production based on
         its energy level and constraints.
 
         Parameters
         ----------
-        time_step: Must be coherent with self._current_hour
+        timestep: Must be coherent with self._current_hour
         """
-        assert self._current_hour == self.time_step_to_hour[time_step]  # int
+        assert self._current_hour == self._timestep_to_hour[timestep]  # int
 
         (min_expected_energy, max_expected_energy) = self._energy_constraints[self._current_hour]
 
