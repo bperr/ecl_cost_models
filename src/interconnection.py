@@ -36,7 +36,7 @@ class Interconnection:
         # -- "Variable" attribute for OPF computation
         self._current_power = 0
 
-    def __repr__(self):
+    def __str__(self):
         return f"{self._zone_from.name} -> {self._zone_to.name}"
 
     @property

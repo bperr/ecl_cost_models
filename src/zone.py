@@ -167,16 +167,14 @@ class Zone:
 
     def build_storage_constraints(self, datetime_index: list[pd.Timestamp], energy_ratings: dict, mean_inflows: dict):
         """
+        Compute time series of min/max energy requirements per storage, to ensure no stored energy change between start
+        and end of the simulation (initial energy = final energy).
 
         Parameters
         ----------
         datetime_index: Time steps for which an OPF will be run
         energy_ratings: Energy rating of each storage of the zone. Stored energy is initialised at half of it.
         mean_inflows: Constant natural charging
-
-        Returns
-        -------
-
         """
         for storage in self._storages:
             storage.build_energy_constraints(datetime_index=datetime_index,

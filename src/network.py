@@ -220,9 +220,8 @@ class Network:
             # Warning if export power in an outside interconnection is not feasible
             # (It can occur if a storage availability is inconsistent with its historical power)
             if interco in outside_interconnections and initial_export != historical_power_per_interco[interco]:
-                interco_str = interco.__repr__()  # f"{interco.zone_from.name} -> {interco.zone_to.name}"
-                outside_export_warnings[f"{interco_str} | historical_export"] = historical_export
-                outside_export_warnings[f"{interco_str} | initial_export"] = initial_export
+                outside_export_warnings[f"{interco} | historical_export"] = historical_export
+                outside_export_warnings[f"{interco} | initial_export"] = initial_export
 
         return outside_export_warnings
 

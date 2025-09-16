@@ -554,7 +554,7 @@ def test_run_opfs(controller_opf_setup):
     controller._network.run_opf.return_value = (True, {})
 
     # Execution of the method to be tested
-    with patch('pandas.DataFrame.to_excel', autospec=True):
+    with patch('pandas.DataFrame.to_excel'):
         controller.run_opfs()
 
     # Vérifications
