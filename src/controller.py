@@ -75,7 +75,7 @@ class Controller:
             for zone in self._zones:
                 self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
                                        storages=self._storages, controllable_sectors=self._controllable_sectors,
-                                       historical_prices=prices[zone], energy_ratings=dict(), mean_inflows=dict())
+                                       historical_prices=prices[zone])
 
             self._network.build_price_models(self._prices_init[f"{start_year}-{end_year}"])
             self.export_price_models(start_year, end_year, create_file, current_date)
@@ -232,9 +232,6 @@ class Controller:
             zone: df[(df.index.year >= start_year) & (df.index.year <= end_year)]
             for zone, df in self._powers.items()
         }
-        storages_data = self._input_reader.read_db_storages_energy_data()
-        storages_energy_ratings = storages_data["Energy MWh"]
-        storages_mean_inflows = storages_data["Mean inflow MW"]
 
         for zone in self._zones:
             if ('PL' in self._input_reader.get_countries_in_zone(zone)
@@ -246,8 +243,7 @@ class Controller:
             else:
                 self._network.add_zone(zone_name=zone, sectors_historical_powers=powers[zone],
                                        storages=self._storages, controllable_sectors=self._controllable_sectors,
-                                       historical_prices=prices[zone], energy_ratings=storages_energy_ratings[zone],
-                                       mean_inflows=storages_mean_inflows[zone])
+                                       historical_prices=prices[zone])
 
         # We suppose that the production data is complete for all zones (8784 hours/year for leap years, 8760 otherwise)
         missing_steps = len(next(iter(powers.values()))) - len(self._network.datetime_index)
@@ -348,6 +344,9 @@ class Controller:
                 return False
             self._network.remove_invalid_datetime(invalid_datetime)
 
+            storages_data = self._input_reader.read_db_storages_energy_data()
+            self._network.build_storage_constraints(energy_ratings=storages_data["Energy MWh"],
+                                                    mean_inflows=storages_data["Mean inflow MW"])
             return True
 
     def run_opfs(self):
@@ -365,15 +364,27 @@ class Controller:
             if not model_built:
                 continue
             n_runs = 0
+            warnings_years = dict()
             for timestep in self._network.datetime_index:
-                self._network.run_opf(timestep)
+                converged, warnings_timestep = self._network.run_opf(timestep)
+                if len(warnings_timestep) > 0:
+                    warnings_years[timestep] = warnings_timestep
                 n_runs += 1
                 if n_runs % 24 == 0:
                     computation_time = time.time() - t0
                     mn = int(computation_time // 60)
                     s = int(computation_time - 60 * mn)
                     print(f"{n_runs} OPF ({n_runs // 24} days) run in {mn}mn{s}s")
+
+            # Save results
             self.export_opfs()
+
+            # Save warnings
+            folder_name = f"{SIMULATED_POWERS_DIRECTORY_ROOT}_{start_year}-{end_year}"
+            file_path = self._work_dir / folder_name / "Warnings.xlsx"
+            warnings_df = pd.DataFrame(warnings_years).transpose()
+            with pd.ExcelWriter(file_path) as writer:
+                warnings_df.to_excel(writer, sheet_name="Warnings", index=True)
 
     def export_opfs(self):
         """
@@ -396,7 +407,12 @@ class Controller:
             for sector in sectors:
                 sector_name = sector.name
                 simulated_powers = sector.simulated_powers
-                sector_data[f'{sector_name}_MW'] = simulated_powers
+                if sector.is_load:
+                    simulated_powers = -simulated_powers
+                if f'{sector_name}_MW' in sector_data.keys():  # storage
+                    sector_data[f'{sector_name}_MW'] += simulated_powers
+                else:
+                    sector_data[f'{sector_name}_MW'] = simulated_powers
 
             # Build the DataFrame with data from all sectors of the current zone
             combined_df = pd.concat(sector_data, axis=1)

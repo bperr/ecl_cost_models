@@ -6,6 +6,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
 
+from src.opf_utils import TOL
+
 
 class Sector:
     """
@@ -67,7 +69,10 @@ class Sector:
         """Returns the sector historical power time series"""
         return self._historical_powers.copy()
 
-    def set_available_power(self, power: float):
+    def set_available_power(self, power: float):  # >= 0
+        assert power >= - TOL
+        if power <= TOL:
+            power = 0
         self._available_power = power
 
     def available_power(self, timestep: pd.Timestamp):

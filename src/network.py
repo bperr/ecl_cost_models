@@ -1,7 +1,8 @@
+from numpy import inf
 import pandas as pd
 
-from src.interconnection import ExteriorInterconnection, Interconnection
-from src.opf_utils import TOL
+from src.interconnection import ExteriorInterconnection, Interconnection, OUT_ZONE_NAME
+from src.opf_utils import TOL, bounded_value
 from src.zone import Zone
 
 
@@ -42,8 +43,7 @@ class Network:
         self._datetime_index = self._datetime_index.drop(invalid_datetime)
 
     def add_zone(self, zone_name: str, sectors_historical_powers: pd.DataFrame, storages: list[str],
-                 controllable_sectors: list[str], historical_prices: pd.Series,
-                 energy_ratings: dict, mean_inflows: dict):
+                 controllable_sectors: list[str], historical_prices: pd.Series):
         """
         Adds a new zone to the network with its sectors and storages, it includes all the powers data for the sectors
         and all the prices data for the zone
@@ -53,8 +53,6 @@ class Network:
         :param storages: List of sector names that are storages
         :param controllable_sectors: List of sector names that are controllable
         :param historical_prices: Historical prices for the zone
-        :param energy_ratings: Energy rating per storage. Used to run OPF but not to build price models.
-        :param mean_inflows: Constant natural charging per storage
         """
         zone = Zone(zone_name, historical_prices)
         self._zones[zone_name] = zone
@@ -77,9 +75,7 @@ class Network:
             is_controllable = sector_name in controllable_sectors
             if sector_name in storages:
                 zone.add_storage(sector_name, sectors_historical_powers[sector_name], is_controllable,
-                                 opf_mode=self._is_opf_mode,
-                                 # energy_rating is not necessary to build price models
-                                 energy_rating=energy_ratings.get(zone, 0), mean_inflow=mean_inflows.get(zone, 0))
+                                 opf_mode=self._is_opf_mode)
             else:
                 zone.add_sector(sector_name, sectors_historical_powers[sector_name], is_controllable)
 
@@ -104,7 +100,7 @@ class Network:
 
     def add_exterior_interconnection(self, zone_from: Zone, zone_to: Zone, historical_power_flows: pd.Series):
         """
-        Add a interconnection with the 'Exterior' zone.
+        Add an interconnection with the 'Exterior' zone.
 
         Parameters
         ----------
@@ -145,20 +141,99 @@ class Network:
             zone_price_models = price_models[zone_name]
             zone.set_price_model(zone_price_models)
 
-    def run_opf(self, timestep: pd.Timestamp):
+    def build_storage_constraints(self, energy_ratings: dict, mean_inflows: dict):
         """
-        Runs the Optimal Power Flow (OPF) algorithm on the network
+        Build min/max energy constraint time series for each storage.
 
-        Note:
-            Method currently not implemented
+        Parameters
+        ----------
+        energy_ratings: Energy rating per storage. Used to run OPF but not to build price models
+        mean_inflows: Constant natural charging per storage
         """
+        for zone_name, zone in self._zones.items():
+            zone.build_storage_constraints(datetime_index=self._datetime_index,
+                                           energy_ratings=energy_ratings[zone_name],
+                                           mean_inflows=mean_inflows[zone_name])
 
-        # Initialise the network (no export)
+    def initialise_opf(self, timestep):
+        """
+        Initialise export in each interconnection with values close to historical powers, by respecting feasible export
+        per zone.
+        """
+        # Reset export per zone and update available power per storage
         for zone in self._zones.values():
             zone.reset_powers()
             zone.update_storages_availability(timestep=timestep)
+
+        feasible_export_per_zone = {zone: zone.feasible_export_range(timestep=timestep)
+                                    for zone in self._zones.values()}
+        historical_power_per_interco = {interco: interco.historical_power(timestep)
+                                        for interco in self._interconnections}
+
+        outside_interconnections = list()  # Interconnections between a network zone and outside the network
+        inside_interconnections = list()  # Interconnections between network zones
         for interco in self._interconnections:
-            interco.init_current_power(timestep)
+            if isinstance(interco, ExteriorInterconnection):
+                outside_interconnections.append(interco)
+            else:
+                inside_interconnections.append(interco)
+
+        # Export per zone due to initial export per interconnection
+        requested_export_per_zone = {zone: 0 for zone in self._zones.values()}
+
+        # Add the zone representing outside the network
+        if len(outside_interconnections) > 0:
+            outside_interco = outside_interconnections[0]
+            if outside_interco.zone_to.name == OUT_ZONE_NAME:
+                outside_zone = outside_interco.zone_to
+            else:
+                assert outside_interco.zone_from.name == OUT_ZONE_NAME
+                outside_zone = outside_interco.zone_from
+            feasible_export_per_zone[outside_zone] = (-inf, inf)
+            requested_export_per_zone[outside_zone] = 0
+
+        outside_export_warnings = dict()
+        for interco in outside_interconnections + inside_interconnections:
+            # Feasible export per zone
+            zone_from = interco.zone_from
+            zone_to = interco.zone_to
+            min_from, max_from = feasible_export_per_zone[zone_from]
+            min_to, max_to = feasible_export_per_zone[zone_to]
+
+            # Feasible export in the interconnection
+            min_from -= requested_export_per_zone[zone_from]
+            max_from -= requested_export_per_zone[zone_from]
+            min_to -= requested_export_per_zone[zone_to]
+            max_to -= requested_export_per_zone[zone_to]
+            min_export = max(min_from, - max_to)
+            max_export = min(max_from, - min_to)
+            assert max_export >= min_export
+
+            # Initialise the export in the interconnection
+            historical_export = historical_power_per_interco[interco]
+            initial_export = bounded_value(value=historical_export,
+                                           min_value=min_export, max_value=max_export)
+            interco.set_export(power=initial_export)
+            requested_export_per_zone[zone_from] += initial_export
+            requested_export_per_zone[zone_to] -= initial_export
+
+            # Warning if export power in an outside interconnection is not feasible
+            # (It can occur if a storage availability is inconsistent with its historical power)
+            if interco in outside_interconnections and initial_export != historical_power_per_interco[interco]:
+                interco_str = interco.__repr__()  # f"{interco.zone_from.name} -> {interco.zone_to.name}"
+                outside_export_warnings[f"{interco_str} | historical_export"] = historical_export
+                outside_export_warnings[f"{interco_str} | initial_export"] = initial_export
+
+        return outside_export_warnings
+
+    def run_opf(self, timestep: pd.Timestamp):
+        """
+        Runs the Optimal Power Flow (OPF) algorithm on the network
+        """
+
+        # Export in each interconnection are initialised close to historical.
+        # Warnings are returned if outside interconnections do not export their historical power.
+        outside_interco_warnings = self.initialise_opf(timestep=timestep)
 
         # Run market in each zone
         for zone in self._zones.values():
@@ -179,7 +254,7 @@ class Network:
             i += 1
 
         if not converged:
-            return False  # The OPF did not converge
+            return False, outside_interco_warnings  # The OPF did not converge
 
         # Run market in each zone with the final exports
         for zone in self._zones.values():
@@ -192,13 +267,4 @@ class Network:
         for interconnection in self._interconnections:
             interconnection.store_simulated_power(timestep)
 
-        return True
-
-    def check_power_models(self):
-        """
-        Validates power models for each sector or interconnection
-
-        Note:
-            Method currently not implemented (will be for OPF).
-        """
-        pass
+        return True, outside_interco_warnings

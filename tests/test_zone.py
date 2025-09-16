@@ -86,12 +86,10 @@ def test_add_storage(zone_test_setup):
     storage = zone_test_setup["storage"]
     is_controllable = False
 
-    zone.add_storage("hydro pump storage", powers, is_controllable=is_controllable, opf_mode=False,
-                     energy_rating=0, mean_inflow=0)
+    zone.add_storage("hydro pump storage", powers, is_controllable=is_controllable, opf_mode=False)
 
     # Checks that Storage has been instantiated with the correct arguments
-    storage_cls.assert_called_once_with("hydro pump storage", powers, is_controllable, opf_mode=False,
-                                        energy_rating=0, mean_inflow=0)
+    storage_cls.assert_called_once_with("hydro pump storage", powers, is_controllable, opf_mode=False)
 
     # Check that both load and generator sectors have been added to the sectors list
     # (and that the object storage to the storages list)
@@ -136,7 +134,7 @@ def test_save_plots_calls_plot_result_with_correct_path(zone_test_setup, tmp_pat
     storage.load.is_load = True  # Storage mock
     storage.generator.is_load = False
     zone.add_storage("hydro pump storage", zone_test_setup["powers"], is_controllable=is_controllable,
-                     opf_mode=False, energy_rating=0, mean_inflow=0)
+                     opf_mode=False)
 
     # Method to test
     zone.save_plots(tmp_path)

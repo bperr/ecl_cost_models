@@ -136,7 +136,7 @@ class Zone:
             if isinstance(net_imports, pd.Series):
                 net_imports_clean = net_imports.fillna(0)
             else:  # if net_import is None or 0
-                net_imports_clean = pd.Series(0, index=zone_production.index)
+                net_imports_clean = pd.Series(0, index=zone_production.index)  # noqa (zone_production is a series)
 
             self._power_demand = net_imports_clean + zone_production
 
@@ -149,8 +149,7 @@ class Zone:
             negative_demand = self._power_demand[self._power_demand < 0]
             return negative_demand.index
 
-    def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, opf_mode: bool,
-                    energy_rating: float, mean_inflow: float):
+    def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, opf_mode: bool):
         """
         Adds an energy storage unit to the zone. Updates the list of sectors accordingly.
         This includes both the charging (load) and discharging (generator) components that have the same sector name
@@ -158,15 +157,31 @@ class Zone:
         :param sector_name: Name of the storage unit
         :param historical_powers: Power time series of the storage (consumption and generation) in MW
         :param is_controllable: Indicates whether the storage behavior is controllable
-        :param energy_rating: Energy rating (in MW) of the storage. Used to run OPF but not to build price models.
-        :param mean_inflow: constant natural charging of the storage
+        :param opf_mode: True if an OPF will be run. False if price models will be built.
         """
-        storage = Storage(sector_name, historical_powers, is_controllable, opf_mode=opf_mode,
-                          energy_rating=energy_rating, mean_inflow=mean_inflow)
+        storage = Storage(sector_name, historical_powers, is_controllable, opf_mode=opf_mode)
         self._storages.append(storage)
         # Availabilities are not built for storage
         self.sectors.append(storage.load)
         self.sectors.append(storage.generator)
+
+    def build_storage_constraints(self, datetime_index: list[pd.Timestamp], energy_ratings: dict, mean_inflows: dict):
+        """
+
+        Parameters
+        ----------
+        datetime_index: Time steps for which an OPF will be run
+        energy_ratings: Energy rating of each storage of the zone. Stored energy is initialised at half of it.
+        mean_inflows: Constant natural charging
+
+        Returns
+        -------
+
+        """
+        for storage in self._storages:
+            storage.build_energy_constraints(datetime_index=datetime_index,
+                                             energy_rating=energy_ratings[storage.name],
+                                             mean_inflow=mean_inflows[storage.name])
 
     def add_interconnection(self, interconnection: Interconnection):
         """
@@ -238,6 +253,18 @@ class Zone:
         """
         self._current_export = sum([line.get_export(zone=self) for line in self._interconnections])
 
+    def feasible_export_range(self, timestep: pd.Timestamp):
+        """
+        Returns the minimum and maximum net export compatible with the sectors availabilities (and storage constraints)
+        """
+        # Net constrained production due to the storages. Can be negative (constrained consumption).
+        net_constrained_production = sum([storage.constrained_production for storage in self._storages])
+        min_net_export = net_constrained_production - sum(sector.available_power(timestep)
+                                                          for sector in self._sectors if sector.is_load)
+        max_net_export = net_constrained_production + sum(sector.available_power(timestep)
+                                                          for sector in self._sectors if not sector.is_load)
+        return min_net_export, max_net_export
+
     def get_cost_function(self, timestep: pd.Timestamp) -> NodeCostFunction:
         """
         Returns the :class:`.NodeCostFunction` of the node.
@@ -252,9 +279,6 @@ class Zone:
             threshold_prices_list.extend(list(sector.price_model))
         threshold_prices_list = sorted(set(threshold_prices_list))
 
-        # Net constrained production due to the storages. Can be negative (constrained consumption)
-        net_constrained_production = sum([storage.constrained_production for storage in self._storages])
-
         # To compute the node cost function, we build in the first place its price/power curve by considering the
         # price_start and price_full of the loads and generators in the node. This is a piecewise linear function whose
         # "rupture" points are the threshold prices.
@@ -267,8 +291,7 @@ class Zone:
         # To satisfy all loads without producing anything in the node (leading to a cost of 0 in the node), the
         # following power is the opposite of what must be imported from the neighbour nodes.
         # This is the first point of the power/cost curve.
-        min_net_export = net_constrained_production - sum(sector.available_power(timestep)
-                                                          for sector in self._sectors if sector.is_load)
+        min_net_export, _ = self.feasible_export_range(timestep=timestep)
         last_power = min_net_export
         last_cost = 0  # Cost = 0 if full consumption and no production
         last_price = None

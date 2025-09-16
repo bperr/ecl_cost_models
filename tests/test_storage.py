@@ -16,17 +16,13 @@ def storage_setup():
     ]
     powers = pd.Series([-100, 0, 150], index=timestamps)
 
-    # Sector patch
-    # sector = patch("src.storage.Sector")
-    # sector_cls = sector.start()
-
     # Load et generator sectors mocks
     sector_load = MagicMock(name="sector_load")
     sector_generator = MagicMock(name="sector_generator")
 
     # Configuring mock behaviour: 1st call for load, 2nd for generator
-    # sector_cls.side_effect = [sector_load, sector_generator]
     sector_cls = patch("src.storage.Sector", side_effect=[sector_load, sector_generator]).start()
+
     yield {
         "powers": powers,
         "sector_cls": sector_cls,
@@ -55,8 +51,8 @@ def storage_setup2(storage_setup):
     sector_generator.set_available_power.side_effect = gen_side_effect
     sector_load.set_available_power.side_effect = load_side_effect
 
-    storage = Storage(sector_name="hydro pump storage", historical_powers=powers, is_controllable=True, opf_mode=True,
-                      energy_rating=10, mean_inflow=1)
+    storage = Storage(sector_name="hydro pump storage", historical_powers=powers, is_controllable=True, opf_mode=True)
+    storage.build_energy_constraints(datetime_index=list(powers.index), energy_rating=10, mean_inflow=1)
 
     yield {
         "powers": powers,
@@ -67,15 +63,14 @@ def storage_setup2(storage_setup):
 
 
 # TODO add test with opf_mode=True and check indexes
-def test_storage_initializes_load_and_generator(storage_setup):  # FIXME test do not pass
+def test_storage_initializes_load_and_generator(storage_setup):
     powers = storage_setup["powers"]
     sector_cls = storage_setup["sector_cls"]
     sector_load = storage_setup["sector_load"]
     sector_generator = storage_setup["sector_generator"]
 
     # Creation of the object storage
-    storage = Storage("hydro pump storage", powers, is_controllable=True, opf_mode=False,
-                      energy_rating=0, mean_inflow=0)
+    storage = Storage("hydro pump storage", powers, is_controllable=True, opf_mode=False)
 
     # Check that Sector class has been called properly
     assert sector_cls.call_count == 2
@@ -111,27 +106,45 @@ def test_build_energy_constraints():
     powers = pd.Series([-30, 40, 0, 0, 0, 0], index=timestamps)
 
     # Creation of the object storage
-    storage = Storage(sector_name="hydro pump storage", historical_powers=powers, is_controllable=True, opf_mode=True,
-                      energy_rating=100, mean_inflow=1)
-    assert storage._energy_constraints == [
+    storage = Storage(sector_name="hydro pump storage", historical_powers=powers, is_controllable=True, opf_mode=True)
+    storage.build_energy_constraints(datetime_index=timestamps, energy_rating=100, mean_inflow=1)
+    assert (storage._energy_constraints.values == [
         (0, 100),
         (0, 100),
         (2, 100),
         (18, 88),
         (34, 69),  # inflow + 1/2 consumption rating = +16 | inflow - 1/2 production rating = -19
         (50, 50),
-    ]
+    ]).all()
+    storage.build_energy_constraints(datetime_index=timestamps, energy_rating=100, mean_inflow=30)
+    assert (storage._energy_constraints.values == [
+        (0, 50),
+        (0, 50),
+        (0, 50),
+        (0, 50),
+        (5, 50),  # inflow + 1/2 consumption rating = +45 | inflow - 1/2 production rating = +10 -> 0
+        (50, 50),
+    ]).all()
+    storage.build_energy_constraints(datetime_index=timestamps, energy_rating=100, mean_inflow=-30)
+    assert (storage._energy_constraints.values == [
+        (50, 100),
+        (50, 100),
+        (50, 100),
+        (50, 100),
+        (50, 100),  # inflow + 1/2 consumption rating = -15 -> 0 | inflow - 1/2 production rating = -50
+        (50, 50),
+    ]).all()
 
 
 def test_update_availabilities(storage_setup2):
     powers = storage_setup2["powers"]
     storage = storage_setup2["storage"]
 
-    assert storage._energy_constraints == [
+    assert (storage._energy_constraints.values == [
         (0, 7),
         (2, 6),  # inflow + 1/2 consumption rating = +3 | inflow - 1/2 production rating = -1
         (5, 5),
-    ]
+    ]).all()
     for (hour, stored_energy, constrained_power, available_gen, available_load) in [
         (1, 0, -1, 0, 3),
         (1, 1, 0, 0, 4),
@@ -146,7 +159,6 @@ def test_update_availabilities(storage_setup2):
 
     ]:
         storage._stored_energy = stored_energy
-        storage._current_hour = hour
         storage.update_availabilities(timestep=powers.index[hour])
 
         assert storage.constrained_production == constrained_power
@@ -169,6 +181,7 @@ def test_compute_new_energy(storage_setup2, constrained_power, gen_power, load_p
     storage.load.current_power = load_power
     storage.generator.current_power = gen_power
     storage._constrained_production = constrained_power
+    storage._timestep = Timestamp("01/01/2015 12:00:00")
 
     # Compute the new energy
     storage._compute_new_energy()
@@ -183,10 +196,8 @@ def test_update_energy_updates_expected_attributes(storage_setup2):
 
     # Run function
     storage._next_energy = 10
-    storage._current_hour = 15
     storage.update_energy()
 
     # Check attributes
     assert storage._stored_energy == 10
     assert storage._next_energy is None
-    assert storage._current_hour == 16
