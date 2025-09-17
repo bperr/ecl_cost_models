@@ -1,12 +1,12 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pandas as pd
 import pytest
 from pandas import Timestamp
 
+from src.interconnection import Interconnection
 from src.network import Network
 from src.zone import Zone
-from src.interconnection import Interconnection
 
 
 @pytest.fixture(scope="function")
@@ -178,34 +178,36 @@ def test_run_opf_makes_expected_calls():
     zone_1 = MagicMock(spec=Zone)
     zone_2 = MagicMock(spec=Zone)
     zone_3 = MagicMock(spec=Zone)
-    for zone in (zone_1, zone_2, zone_3):
-        zone.feasible_export_range.return_value = (-10, 10)
 
     interconnection_1 = MagicMock(spec=Interconnection)
     interconnection_1.optimise_export.side_effect = [-1, -.1, 0]
     interconnection_1.zone_from = zone_1
     interconnection_1.zone_to = zone_2
-    interconnection_1.historical_power.return_value = 1
 
     interconnection_2 = MagicMock(spec=Interconnection)
     interconnection_2.optimise_export.side_effect = [0, 0, 0]
     interconnection_2.zone_from = zone_2
     interconnection_2.zone_to = zone_3
-    interconnection_2.historical_power.return_value = 2
 
     network = Network(opf_mode=True)
     network._zones = {"1": zone_1, "2": zone_2, "3": zone_3}
     network._interconnections = [interconnection_1, interconnection_2]
+    fake_timestep = pd.Timestamp("2019-01-01 00:00:00")
 
-    converged = network.run_opf(timestep="fake_timestep")[0]
+    with patch.object(network, "initialise_opf") as initialise_opf_mock:
+        converged = network.run_opf(timestep=fake_timestep)
     assert converged
 
+    initialise_opf_mock.assert_called_once_with(timestep=fake_timestep)
     for zone in (zone_1, zone_2, zone_3):
         assert zone.market_optimisation.call_count == 2
-        assert zone.reset_powers.call_count == 1
-        assert zone.store_simulated_power.call_count == 1
-        assert zone.update_storages_availability.call_count == 1
+        zone.market_optimisation.assert_has_calls([call(fake_timestep), call(fake_timestep)])
+        zone.update_storages_energy.assert_called_once()
+        zone.store_simulated_power.assert_called_once_with(fake_timestep)
 
     for interconnection in (interconnection_1, interconnection_2):
         assert interconnection.optimise_export.call_count == 3  # Three iterations of the loop
-        assert interconnection.store_simulated_power.call_count == 1
+        interconnection.optimise_export.assert_has_calls([
+            call(fake_timestep), call(fake_timestep), call(fake_timestep)
+        ])
+        interconnection.store_simulated_power.assert_called_once_with(fake_timestep)
