@@ -364,11 +364,8 @@ class Controller:
             if not model_built:
                 continue
             n_runs = 0
-            warnings_years = dict()
             for timestep in self._network.datetime_index:
-                converged, warnings_timestep = self._network.run_opf(timestep)
-                if len(warnings_timestep) > 0:
-                    warnings_years[timestep] = warnings_timestep
+                self._network.run_opf(timestep)
                 n_runs += 1
                 if n_runs % 24 == 0:
                     computation_time = time.time() - t0
@@ -378,13 +375,6 @@ class Controller:
 
             # Save results
             self.export_opfs()
-
-            # Save warnings
-            folder_name = f"{SIMULATED_POWERS_DIRECTORY_ROOT}_{start_year}-{end_year}"
-            file_path = self._work_dir / folder_name / "Warnings.xlsx"
-            warnings_df = pd.DataFrame(warnings_years).transpose()
-            with pd.ExcelWriter(file_path) as writer:
-                warnings_df.to_excel(writer, sheet_name="Warnings", index=True)
 
     def export_opfs(self):
         """

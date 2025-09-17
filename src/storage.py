@@ -90,11 +90,10 @@ class Storage:
         charging_rating = consumption_rating_mw * self._consumption_efficiency
         discharging_rating = production_rating_mw / self._production_efficiency
 
-        if not (0 <= mean_inflow <= discharging_rating):
-            feasible_inflow = bounded_value(value=mean_inflow, min_value=-charging_rating, max_value=discharging_rating)
-            warnings.warn(f"Storage {self._name}: mean inflow set to {feasible_inflow} instead of {mean_inflow} to be "
-                          f"compatible with charging ({charging_rating} and discharging ({discharging_rating}) ratings")
-            mean_inflow = feasible_inflow
+        if mean_inflow > discharging_rating:
+            warnings.warn(f"Storage {self._name}: mean inflow set to {discharging_rating} instead of {mean_inflow} to "
+                          f"be compatible with discharging rating")
+            mean_inflow = discharging_rating
         self._mean_inflow = mean_inflow
 
         self._stored_energy = energy_rating / 2  # = initial energy
