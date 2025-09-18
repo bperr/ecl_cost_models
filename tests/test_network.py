@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from pandas import Timestamp
 
-from src.interconnection import Interconnection
+from src.interconnection import ExteriorInterconnection, Interconnection, OUT_ZONE_NAME
 from src.network import Network
 from src.zone import Zone
 
@@ -211,3 +211,81 @@ def test_run_opf_makes_expected_calls():
             call(fake_timestep), call(fake_timestep), call(fake_timestep)
         ])
         interconnection.store_simulated_power.assert_called_once_with(fake_timestep)
+
+
+def test_initialise_opf_raise_warning_if_non_feasible_initialisation_requires_to_fake_the_exterior_interconnection():
+    timestep = pd.Timestamp("2019-01-01 00:00:00")
+
+    # Create network
+    ch_zone = Zone("CH", pd.Series())
+    fr_zone = Zone("FR", pd.Series())
+    out_zone = Zone(OUT_ZONE_NAME, pd.Series())
+
+    ch_fr_interconnection = Interconnection(fr_zone, ch_zone, power_rating=100,
+                                            historical_power_flows=pd.Series(10, index=[timestep]))
+    ch_outside_interconnection = ExteriorInterconnection(ch_zone, out_zone,
+                                                         historical_power_flows=pd.Series(20, index=[timestep]))
+    fr_outside_interconnection = ExteriorInterconnection(fr_zone, out_zone,
+                                                         historical_power_flows=pd.Series(0, index=[timestep]))
+
+    ch_zone._interconnections = [ch_fr_interconnection, ch_outside_interconnection]
+    fr_zone._interconnections = [ch_fr_interconnection, fr_outside_interconnection]
+
+    network = Network(opf_mode=True)
+    network._zones = {'CH': ch_zone, 'FR': fr_zone}
+    network._interconnections = [ch_fr_interconnection, ch_outside_interconnection, fr_outside_interconnection]
+
+    # Fake feasible export per zone
+    ch_feasible_export = (-15, 0)
+    fr_feasible_export = (-10, 10)
+
+    with patch.object(Zone, "reset_powers"), patch.object(Zone, "update_storages_availability"), \
+            patch.object(Zone, "feasible_export_range", side_effect=[ch_feasible_export, fr_feasible_export]), \
+            patch("warnings.warn") as warning_mock:
+        network.initialise_opf(timestep)
+
+    # Check warning message
+    warning_mock.assert_called_with(
+        f"At timestep {timestep}, zone CH export constraints could not be satisfied. "
+        f"Interconnection with the outside zone is modified by -10, therefore "
+        "simulation results cannot be compared with historical data", stacklevel=2
+    )
+
+
+def test_initialise_opf_raise_warning_if_non_feasible_initialisation_requires_to_fake_the_exterior_interconnection_2():
+    timestep = pd.Timestamp("2019-01-01 00:00:00")
+
+    # Create network
+    ch_zone = Zone("CH", pd.Series())
+    fr_zone = Zone("FR", pd.Series())
+    out_zone = Zone(OUT_ZONE_NAME, pd.Series())
+
+    ch_fr_interconnection = Interconnection(fr_zone, ch_zone, power_rating=100,
+                                            historical_power_flows=pd.Series(10, index=[timestep]))
+    ch_outside_interconnection = ExteriorInterconnection(ch_zone, out_zone,
+                                                         historical_power_flows=pd.Series(20, index=[timestep]))
+    fr_outside_interconnection = ExteriorInterconnection(fr_zone, out_zone,
+                                                         historical_power_flows=pd.Series(0, index=[timestep]))
+
+    ch_zone._interconnections = [ch_fr_interconnection, ch_outside_interconnection]
+    fr_zone._interconnections = [ch_fr_interconnection, fr_outside_interconnection]
+
+    network = Network(opf_mode=True)
+    network._zones = {'CH': ch_zone, 'FR': fr_zone}
+    network._interconnections = [ch_fr_interconnection, ch_outside_interconnection, fr_outside_interconnection]
+
+    # Fake feasible export per zone
+    ch_feasible_export = (-10, 10)
+    fr_feasible_export = (-10, 5)
+
+    with patch.object(Zone, "reset_powers"), patch.object(Zone, "update_storages_availability"), \
+            patch.object(Zone, "feasible_export_range", side_effect=[ch_feasible_export, fr_feasible_export]), \
+            patch("warnings.warn") as warning_mock:
+        network.initialise_opf(timestep)
+
+    # Check warning message
+    warning_mock.assert_called_with(
+        f"At timestep {timestep}, zone CH export constraints could not be satisfied. "
+        f"Interconnection with the outside zone is modified by -5, therefore "
+        "simulation results cannot be compared with historical data", stacklevel=2
+    )

@@ -215,7 +215,8 @@ class Network:
             max_to -= requested_export_per_zone[zone_to]
             min_export = max(min_from, - max_to)
             max_export = min(max_from, - min_to)
-            assert max_export >= min_export
+            if min_export > max_export:
+                min_export = max_export
 
             # Initialise the export in the interconnection
             historical_export = historical_power_per_interco[interco]
