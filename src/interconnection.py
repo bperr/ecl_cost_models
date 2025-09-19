@@ -200,6 +200,21 @@ class Interconnection:
             power_min = threshold_points_cost[sorted_min_cost_indexes[0]][0]
             power_max = threshold_points_cost[sorted_min_cost_indexes[-1]][0]
             return bounded_value(value=0, min_value=power_min, max_value=power_max), min_cost
+
+        elif len(min_cost_indexes) == 2:
+            # Minimum cost is between these two powers. Their index should be consecutive.
+            sorted_min_cost_indexes = sorted(min_cost_indexes)
+            assert sorted_min_cost_indexes[0] + 1 == sorted_min_cost_indexes[1]
+            power_min = threshold_points_cost[sorted_min_cost_indexes[0]][0]
+            power_max = threshold_points_cost[sorted_min_cost_indexes[1]][0]
+            # Find minimum of polynomial function
+            a_from, b_from, c_from = from_equations[from_cost_function.equation_index(power=(power_min + power_max) / 2)]
+            a_to, b_to, c_to = to_equations[to_cost_function.equation_index(power=-(power_min + power_max) / 2)]
+            a = a_from + a_to
+            b = b_from - b_to
+            c = c_from + c_to
+            return minimise_trinomial(a=a, b=b, c=c, x_min=power_min, x_max=power_max, x_default=0)
+
         else:
             min_cost_index = min_cost_indexes[0]
             # We can look for the minimum price in the two power intervals around min_cost_index
