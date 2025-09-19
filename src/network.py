@@ -1,7 +1,9 @@
+import warnings
+
 import pandas as pd
 
 from src.interconnection import ExteriorInterconnection, Interconnection
-from src.opf_utils import TOL
+from src.opf_utils import TOL, bounded_value
 from src.zone import Zone
 
 
@@ -99,7 +101,7 @@ class Network:
 
     def add_exterior_interconnection(self, zone_from: Zone, zone_to: Zone, historical_power_flows: pd.Series):
         """
-        Add a interconnection with the 'Exterior' zone.
+        Add an interconnection with the 'Exterior' zone.
 
         Parameters
         ----------
@@ -140,19 +142,118 @@ class Network:
             zone_price_models = price_models[zone_name]
             zone.set_price_model(zone_price_models)
 
+    def build_storage_constraints(self, energy_ratings: dict, mean_inflows: dict):
+        """
+        Build min/max energy constraint time series for each storage.
+
+        Parameters
+        ----------
+        energy_ratings: Energy rating per storage. Used to run OPF but not to build price models
+        mean_inflows: Constant natural charging per storage
+        """
+        for zone_name, zone in self._zones.items():
+            zone.build_storage_constraints(datetime_index=self._datetime_index,
+                                           energy_ratings=energy_ratings[zone_name],
+                                           mean_inflows=mean_inflows[zone_name])
+
+    def initialise_opf(self, timestep):
+        """
+        Initialise export in each interconnection with values close to historical powers, by respecting feasible export
+        per zone.
+        """
+
+        def get_exterior_interconnection(inside_zone: Zone) -> ExteriorInterconnection | None:
+            # By construction, outside connection should be the last
+            for interconnection in reversed(inside_zone.interconnections):
+                if isinstance(interconnection, ExteriorInterconnection):
+                    return interconnection
+            return None  # This should not happen as each zone is connected to the exterior zone
+
+        # Reset export per zone and update available power per storage
+        for zone in self._zones.values():
+            zone.reset_powers()
+            zone.update_storages_availability(timestep=timestep)
+
+        # Reset export with the outside zone and list inner network interconnection
+        inside_interconnections = list()  # Interconnections between network zones
+        for interco in self._interconnections:
+            if isinstance(interco, ExteriorInterconnection):
+                interco.set_export(power=interco.historical_powers[timestep])
+            else:
+                inside_interconnections.append(interco)
+
+        # Compute minimum and maximum export per zone, considering storage constraints and exchange with outside
+        feasible_export_per_zone = {}
+        for zone in self._zones.values():
+            min_net_export, max_net_export = zone.feasible_export_range(timestep)
+            exterior_interco = get_exterior_interconnection(zone)
+            if exterior_interco is not None:
+                external_net_export = exterior_interco.get_export(zone)  # Is equal to historical power
+                min_net_export -= external_net_export
+                max_net_export -= external_net_export
+
+            feasible_export_per_zone[zone] = min_net_export, max_net_export
+
+        historical_power_per_interco = {interco: interco.historical_power(timestep)
+                                        for interco in self._interconnections}
+
+        # Export per zone due to initial export per interconnection
+        requested_export_per_zone = {zone: 0 for zone in self._zones.values()}
+
+        # Set initial power in interconnections allowing to respect export constraints
+        for interco in inside_interconnections:
+            # Feasible export per zone
+            zone_from = interco.zone_from
+            zone_to = interco.zone_to
+            min_from, max_from = feasible_export_per_zone[zone_from]
+            min_to, max_to = feasible_export_per_zone[zone_to]
+
+            # Feasible export in the interconnection
+            min_from -= requested_export_per_zone[zone_from]
+            max_from -= requested_export_per_zone[zone_from]
+            min_to -= requested_export_per_zone[zone_to]
+            max_to -= requested_export_per_zone[zone_to]
+            min_export = max(min_from, - max_to)
+            max_export = min(max_from, - min_to)
+            if min_export > max_export:
+                min_export = max_export
+
+            # Initialise the export in the interconnection
+            historical_export = historical_power_per_interco[interco]
+            initial_export = bounded_value(
+                value=bounded_value(value=historical_export, min_value=min_export, max_value=max_export),
+                min_value=-interco.power_rating, max_value=interco.power_rating
+            )
+            interco.set_export(power=initial_export)
+            requested_export_per_zone[zone_from] += initial_export
+            requested_export_per_zone[zone_to] -= initial_export
+
+        # Check requested export per zone is within allowed limits
+        for zone, requested_export in requested_export_per_zone.items():
+            min_net_export, max_net_export = feasible_export_per_zone[zone]
+            if not (min_net_export <= requested_export <= max_net_export):
+                # For the OPF to initialise, we modify the interconnection with the exterior, thus artificially
+                # falsifying the simulation inputs.
+                exterior_interconnection = get_exterior_interconnection(zone)
+                assert exterior_interconnection is not None
+
+                if requested_export > max_net_export:
+                    delta_power = max_net_export - requested_export  # <0, power to remove in exterior interconnection
+                else:
+                    delta_power = min_net_export - requested_export  # >0, power to add in exterior interconnection
+                exterior_interconnection.set_export(exterior_interconnection.get_export(zone) + delta_power)
+                warnings.warn(f"At timestep {timestep}, zone {zone.name} export constraints could not be satisfied. "
+                              f"Interconnection with the outside zone is modified by {delta_power}, therefore "
+                              "simulation results cannot be compared with historical data", stacklevel=2)
+
     def run_opf(self, timestep: pd.Timestamp):
         """
         Runs the Optimal Power Flow (OPF) algorithm on the network
-
-        Note:
-            Method currently not implemented
         """
 
-        # Initialise the network (no export)
-        for zone in self._zones.values():
-            zone.reset_powers()
-        for interco in self._interconnections:
-            interco.init_current_power(timestep)
+        # Export in each interconnection are initialised close to historical.
+        # Warnings are returned if outside interconnections do not export their historical power.
+        self.initialise_opf(timestep=timestep)
 
         # Run market in each zone
         for zone in self._zones.values():
@@ -181,17 +282,9 @@ class Network:
 
         # Store results
         for zone in self.zones.values():
+            zone.update_storages_energy()
             zone.store_simulated_power(timestep)
         for interconnection in self._interconnections:
             interconnection.store_simulated_power(timestep)
 
         return True
-
-    def check_power_models(self):
-        """
-        Validates power models for each sector or interconnection
-
-        Note:
-            Method currently not implemented (will be for OPF).
-        """
-        pass

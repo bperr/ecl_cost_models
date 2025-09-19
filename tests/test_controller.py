@@ -551,9 +551,11 @@ def test_run_opfs(controller_opf_setup):
         "01/02/2018 12:00:00",
         "01/03/2018 12:00:00"
     ]
+    controller._network.run_opf.return_value = (True, {})
 
     # Execution of the method to be tested
-    controller.run_opfs()
+    with patch('pandas.DataFrame.to_excel'):
+        controller.run_opfs()
 
     # Vérifications
     controller.build_network_model.assert_has_calls([
@@ -595,6 +597,7 @@ def test_export_opfs(controller_opf_setup):
     zone_mock_ibr = controller_opf_setup["zone_mock_ibr"]
     sector_mock = MagicMock()
     sector_mock.name = "sector_ibr"
+    sector_mock.is_load = False
     sector_mock.simulated_powers = pd.Series([10, 20, 30, 40, 50, 60], index=datetime_index)
     zone_mock_ibr.sectors = [sector_mock]
     controller._network.zones = {"IBR": zone_mock_ibr}

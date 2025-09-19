@@ -36,6 +36,9 @@ class Interconnection:
         # -- "Variable" attribute for OPF computation
         self._current_power = 0
 
+    def __str__(self):
+        return f"{self._zone_from.name} -> {self._zone_to.name}"
+
     @property
     def zone_from(self):
         return self._zone_from
@@ -45,8 +48,15 @@ class Interconnection:
         return self._zone_to
 
     @property
+    def power_rating(self):
+        return self._power_rating
+
+    @property
     def historical_powers(self):
         return self._historical_powers.copy()
+
+    def historical_power(self, timestep: pd.Timestamp):
+        return self._historical_powers[timestep]
 
     def store_simulated_power(self, timestep: pd.Timestamp):
         """
@@ -244,9 +254,6 @@ class Interconnection:
                 x, cost = x12, cost12
         return x, cost
 
-    def init_current_power(self, timestep: pd.Timestamp):
-        self._current_power = self._historical_powers[timestep]
-
 
 OUT_ZONE_NAME = "OUTSIDE"
 
@@ -276,5 +283,3 @@ class ExteriorInterconnection(Interconnection):
         Zero, as nothing is optimised here.
         """
         return 0
-
-

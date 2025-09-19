@@ -114,6 +114,32 @@ def test_build_availabilities_parametrized(name, is_storage_load, is_controllabl
     assert len(result) == len(powers)
 
 
+@pytest.mark.parametrize("name, is_controllable, is_storage, is_load", [
+    ("PV", False, False, False),
+    ("Fossil", True, False, False),
+    ("Hydro gen", True, True, False),
+    ("Hydro load", True, True, True),
+    ("Industry", False, False, True),
+])
+def test_available_power(name, is_storage, is_load, is_controllable):
+    historical_powers = pd.Series([100, 200, 150], index=date_range("2015-01-01", periods=3, freq="H"))
+    sector = Sector(sector_name=name, historical_powers=historical_powers,
+                    is_controllable=is_controllable, is_load=is_load)
+    if is_storage:
+        for timestep in historical_powers.index:
+            for available_power in (10, 20):
+                sector._available_power = available_power
+                assert sector.available_power(timestep=timestep) == available_power
+    else:
+        sector.build_availabilities()
+        for timestep, power in historical_powers.items():
+            if is_controllable:
+                available_power = 200
+            else:
+                available_power = power
+            assert sector.available_power(timestep=timestep) == available_power
+
+
 # ------- Tests build_price_model -------
 
 @pytest.mark.parametrize("sector_key, ascending", [
@@ -260,14 +286,15 @@ def test_store_simulated_power(sector_setup):
     sector = sector_setup["sector_prod"]
     timestep = pd.Timestamp("2015-01-01 12:00:00")
 
-    sector._current_power = 150
+    for extra_power in (0, 10, -10):
+        sector._current_power = 150
 
-    # tested method
-    sector.store_simulated_power(timestep)
+        # tested method
+        sector.store_simulated_power(timestep, extra_power=extra_power)
 
-    # Verifications
-    expected_series = pd.Series([150], index=[timestep])
+        # Verifications
+        expected_series = pd.Series([150 + extra_power], index=[timestep])
 
-    pd.testing.assert_series_equal(sector._simulated_powers, expected_series)
+        pd.testing.assert_series_equal(sector._simulated_powers, expected_series)
 
-    assert sector._current_power == 0
+        assert sector._current_power == 0

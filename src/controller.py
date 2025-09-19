@@ -344,6 +344,9 @@ class Controller:
                 return False
             self._network.remove_invalid_datetime(invalid_datetime)
 
+            storages_data = self._input_reader.read_db_storages_energy_data()
+            self._network.build_storage_constraints(energy_ratings=storages_data["Energy MWh"],
+                                                    mean_inflows=storages_data["Mean inflow MW"])
             return True
 
     def run_opfs(self):
@@ -369,6 +372,8 @@ class Controller:
                     mn = int(computation_time // 60)
                     s = int(computation_time - 60 * mn)
                     print(f"{n_runs} OPF ({n_runs // 24} days) run in {mn}mn{s}s")
+
+            # Save results
             self.export_opfs()
 
     def export_opfs(self):
@@ -392,7 +397,12 @@ class Controller:
             for sector in sectors:
                 sector_name = sector.name
                 simulated_powers = sector.simulated_powers
-                sector_data[f'{sector_name}_MW'] = simulated_powers
+                if sector.is_load:
+                    simulated_powers = -simulated_powers
+                if f'{sector_name}_MW' in sector_data.keys():  # storage
+                    sector_data[f'{sector_name}_MW'] += simulated_powers
+                else:
+                    sector_data[f'{sector_name}_MW'] = simulated_powers
 
             # Build the DataFrame with data from all sectors of the current zone
             combined_df = pd.concat(sector_data, axis=1)
