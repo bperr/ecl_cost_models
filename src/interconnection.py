@@ -148,8 +148,6 @@ class Interconnection:
         # function.
         #
 
-        x_default = 0
-
         from_points = from_cost_function.points  # points at the line scope
         to_points = to_cost_function.points
         from_equations = from_cost_function.equations
@@ -193,8 +191,8 @@ class Interconnection:
         min_cost = threshold_points_cost[:, 1].min()
         min_cost_indexes = np.where(threshold_points_cost[:, 1] == min_cost)[0]
 
-        if len(min_cost_indexes) > 1:
-            # There are several powers with minimum cost.
+        if len(min_cost_indexes) > 2:
+            # There are more than two threshold powers with minimum cost. The cost function is constant between them!
             # As the total cost function is convex, their index in threshold_points_cost should be consecutive.
             sorted_min_cost_indexes = sorted(min_cost_indexes)
             assert all(value - idx == sorted_min_cost_indexes[0] for idx, value in enumerate(sorted_min_cost_indexes))
@@ -223,20 +221,26 @@ class Interconnection:
             # cost(x) = (a1 + a2) * x² + (b1 - b2) * x + (c1 + c2)
 
             # - On [x0 ; x1]
-            a01f, b01f, c01f = from_equations[from_cost_function.equation_index(power=(x0 + x1) / 2)]
-            a01t, b01t, c01t = to_equations[to_cost_function.equation_index(power=-(x0 + x1) / 2)]
-            a01 = a01f + a01t
-            b01 = b01f - b01t
-            c01 = c01f + c01t
-            x01, cost01 = minimise_trinomial(a=a01, b=b01, c=c01, x_min=x0, x_max=x1, x_default=x_default)
+            if x0 == x1:
+                x01, cost01 = x0, from_cost_function.compute_cost(power=x0) + to_cost_function.compute_cost(power=-x0)
+            else:
+                a01f, b01f, c01f = from_equations[from_cost_function.equation_index(power=(x0 + x1) / 2)]
+                a01t, b01t, c01t = to_equations[to_cost_function.equation_index(power=-(x0 + x1) / 2)]
+                a01 = a01f + a01t
+                b01 = b01f - b01t
+                c01 = c01f + c01t
+                x01, cost01 = minimise_trinomial(a=a01, b=b01, c=c01, x_min=x0, x_max=x1, x_default=0)
 
             # - On [x1 ; x2]
-            a12f, b12f, c12f = from_equations[from_cost_function.equation_index(power=(x1 + x2) / 2)]
-            a12t, b12t, c12t = to_equations[to_cost_function.equation_index(power=-(x1 + x2) / 2)]
-            a12 = a12f + a12t
-            b12 = b12f - b12t
-            c12 = c12f + c12t
-            x12, cost12 = minimise_trinomial(a=a12, b=b12, c=c12, x_min=x1, x_max=x2, x_default=x_default)
+            if x2 == x1:
+                x12, cost12 = x2, from_cost_function.compute_cost(power=x2) + to_cost_function.compute_cost(power=-x2)
+            else:
+                a12f, b12f, c12f = from_equations[from_cost_function.equation_index(power=(x1 + x2) / 2)]
+                a12t, b12t, c12t = to_equations[to_cost_function.equation_index(power=-(x1 + x2) / 2)]
+                a12 = a12f + a12t
+                b12 = b12f - b12t
+                c12 = c12f + c12t
+                x12, cost12 = minimise_trinomial(a=a12, b=b12, c=c12, x_min=x1, x_max=x2, x_default=0)
 
             # Return the minimum cost
             if cost01 < cost12:
@@ -244,14 +248,9 @@ class Interconnection:
             elif cost12 < cost01:
                 x, cost = x12, cost12
             else:  # cost01 = cost12
-                if x_default <= x01:
-                    x, cost = x01, cost01
-                elif x_default <= x1:
-                    x, cost = x_default, a01 * x_default * x_default + b01 * x_default + c01
-                elif x_default <= x12:
-                    x, cost = x_default, a12 * x_default * x_default + b12 * x_default + c12
-                else:
-                    x, cost = x12, cost12
+                # Choose the smallest export (in absolute value)
+                x, cost = min(x01, x12, key=lambda value: abs(value)), cost01
+
             return x, cost
 
 
