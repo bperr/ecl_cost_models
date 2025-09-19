@@ -2,7 +2,9 @@ from __future__ import annotations  # Postpones annotation checking
 
 from typing import TYPE_CHECKING
 
-from src.opf_utils import LineCostFunction, TOL, minimise_trinomial
+import numpy as np
+
+from src.opf_utils import LineCostFunction, TOL, bounded_value, minimise_trinomial
 
 if TYPE_CHECKING:  # False at runtime
     from zone import Zone  # Import zone only during type checking, not at runtime
@@ -146,8 +148,6 @@ class Interconnection:
         # function.
         #
 
-        x_default = 0
-
         from_points = from_cost_function.points  # points at the line scope
         to_points = to_cost_function.points
         from_equations = from_cost_function.equations
@@ -171,88 +171,102 @@ class Interconnection:
         x0 = max(from_points[0][0], -to_points[-1][0], -self._power_rating)
         x2 = min(from_points[-1][0], -to_points[0][0], self._power_rating)
         assert x0 <= x2  # else there is no common interval on which both from/to cost functions are defined
-
         cost0 = from_cost_function.compute_cost(power=x0) + to_cost_function.compute_cost(power=-x0)
         cost2 = from_cost_function.compute_cost(power=x2) + to_cost_function.compute_cost(power=-x2)
-        if x0 == x2:
-            return x0, cost0
-        if cost0 <= cost2:
-            x1 = x0
-            cost1 = cost0
+
+        # Test all threshold points within [x0 ; x2]
+        threshold_points_cost_list = [(x0, cost0), (x2, cost2)]
+        for x_from, from_cost in from_points:
+            if x0 < x_from < x2:
+                threshold_points_cost_list.append((x_from, from_cost + to_cost_function.compute_cost(power=-x_from)))
+        for x_to, to_cost in to_points:
+            x_from = -x_to
+            if x0 < x_from < x2:
+                threshold_points_cost_list.append((x_from, from_cost_function.compute_cost(power=x_from) + to_cost))
+
+        # Sort by power
+        threshold_points_cost = np.array(threshold_points_cost_list)
+        threshold_points_cost = threshold_points_cost[threshold_points_cost[:, 0].argsort()]
+        # Find minimum cost
+        min_cost = threshold_points_cost[:, 1].min()
+        min_cost_indexes = np.where(threshold_points_cost[:, 1] == min_cost)[0]
+
+        if len(min_cost_indexes) > 2:
+            # There are more than two threshold powers with minimum cost. The cost function is constant between them!
+            # As the total cost function is convex, their index in threshold_points_cost should be consecutive.
+            sorted_min_cost_indexes = sorted(min_cost_indexes)
+            assert all(value - idx == sorted_min_cost_indexes[0] for idx, value in enumerate(sorted_min_cost_indexes))
+            # Any value on all intervals gives minimum cost. Thus, we return the closest one to zero
+            power_min = threshold_points_cost[sorted_min_cost_indexes[0]][0]
+            power_max = threshold_points_cost[sorted_min_cost_indexes[-1]][0]
+            return bounded_value(value=0, min_value=power_min, max_value=power_max), min_cost
+
+        elif len(min_cost_indexes) == 2:
+            # Minimum cost is between these two powers. Their index should be consecutive.
+            sorted_min_cost_indexes = sorted(min_cost_indexes)
+            assert sorted_min_cost_indexes[0] + 1 == sorted_min_cost_indexes[1]
+            power_min = threshold_points_cost[sorted_min_cost_indexes[0]][0]
+            power_max = threshold_points_cost[sorted_min_cost_indexes[1]][0]
+            # Find minimum of polynomial function
+            a_from, b_from, c_from = from_equations[from_cost_function.equation_index(power=(power_min + power_max) / 2)]
+            a_to, b_to, c_to = to_equations[to_cost_function.equation_index(power=-(power_min + power_max) / 2)]
+            a = a_from + a_to
+            b = b_from - b_to
+            c = c_from + c_to
+            return minimise_trinomial(a=a, b=b, c=c, x_min=power_min, x_max=power_max, x_default=0)
+
         else:
-            x1 = x2
-            cost1 = cost2
-
-        # Using threshold powers of 'from' cost function, reduce the search intervals [x0 ; x1] and [x1 ; x2]
-        for x3, from_cost3 in from_points:
-            if x0 < x3 < x2:
-                cost3 = from_cost3 + to_cost_function.compute_cost(power=-x3)
-                if x3 < x1:
-                    if cost3 < cost1:
-                        x2, cost2 = x1, cost1
-                        x1, cost1 = x3, cost3
-                    else:
-                        x0, cost0 = x3, cost3
-                elif x3 > x1:
-                    if cost3 < cost1:
-                        x0, cost0 = x1, cost1
-                        x1, cost1 = x3, cost3
-                    else:
-                        x2, cost2 = x3, cost3
-
-        # Using threshold powers of 'to' cost function, reduce the search intervals [x0 ; x1] and [x1 ; x2]
-        for x3_to, to_cost3 in to_points:
-            x3 = -x3_to  # Threshold net export of to_cost_function becomes the opposite at the 'from' side of the line
-            if x0 < x3 < x2:
-                cost3 = from_cost_function.compute_cost(power=x3) + to_cost3
-                if x3 < x1:
-                    if cost3 < cost1:
-                        x2, cost2 = x1, cost1
-                        x1, cost1 = x3, cost3
-                    else:
-                        x0, cost0 = x3, cost3
-                elif x3 > x1:
-                    if cost3 < cost1:
-                        x0, cost0 = x1, cost1
-                        x1, cost1 = x3, cost3
-                    else:
-                        x2, cost2 = x3, cost3
-
-        # The polynomial coefficients on the new [x0 ; x1] and [x1; x2] will not change for both cost function
-        # We can minimise the overall cost function on both intervals
-        # cost(x) = (a1 + a2) * x² + (b1 - b2) * x + (c1 + c2)
-
-        # - On [x0 ; x1]
-        a01f, b01f, c01f = from_equations[from_cost_function.equation_index(power=(x0 + x1) / 2)]
-        a01t, b01t, c01t = to_equations[to_cost_function.equation_index(power=-(x0 + x1) / 2)]
-        a01 = a01f + a01t
-        b01 = b01f - b01t
-        c01 = c01f + c01t
-        x01, cost01 = minimise_trinomial(a=a01, b=b01, c=c01, x_min=x0, x_max=x1, x_default=x_default)
-
-        # - On [x1 ; x2]
-        a12f, b12f, c12f = from_equations[from_cost_function.equation_index(power=(x1 + x2) / 2)]
-        a12t, b12t, c12t = to_equations[to_cost_function.equation_index(power=-(x1 + x2) / 2)]
-        a12 = a12f + a12t
-        b12 = b12f - b12t
-        c12 = c12f + c12t
-        x12, cost12 = minimise_trinomial(a=a12, b=b12, c=c12, x_min=x1, x_max=x2, x_default=x_default)
-
-        # Return the minimum cost
-        if cost01 < cost12:
-            x, cost = x01, cost01
-        elif cost12 < cost01:
-            x, cost = x12, cost12
-        else:  # cost01 = cost12
-            if x_default <= x01:
-                x, cost = x01, cost01
-            elif x_default <= x1:
-                x, cost = x_default, a01 * x_default * x_default + b01 * x_default + c01
-            elif x_default <= x12:
-                x, cost = x_default, a12 * x_default * x_default + b12 * x_default + c12
+            min_cost_index = min_cost_indexes[0]
+            # We can look for the minimum price in the two power intervals around min_cost_index
+            if min_cost_index == 0:
+                x0 = threshold_points_cost[min_cost_index][0]
+                x1 = threshold_points_cost[min_cost_index][0]
+                x2 = threshold_points_cost[min_cost_index + 1][0]
+            elif min_cost_index == len(threshold_points_cost) - 1:
+                x0 = threshold_points_cost[min_cost_index - 1][0]
+                x1 = threshold_points_cost[min_cost_index][0]
+                x2 = threshold_points_cost[min_cost_index][0]
             else:
+                x0 = threshold_points_cost[min_cost_index - 1][0]
+                x1 = threshold_points_cost[min_cost_index][0]
+                x2 = threshold_points_cost[min_cost_index + 1][0]
+
+            # The polynomial coefficients on [x0 ; x1] and [x1; x2] will not change for both cost function
+            # We can minimise the overall cost function on both intervals
+            # cost(x) = (a1 + a2) * x² + (b1 - b2) * x + (c1 + c2)
+
+            # - On [x0 ; x1]
+            if x0 == x1:
+                x01, cost01 = x0, from_cost_function.compute_cost(power=x0) + to_cost_function.compute_cost(power=-x0)
+            else:
+                a01f, b01f, c01f = from_equations[from_cost_function.equation_index(power=(x0 + x1) / 2)]
+                a01t, b01t, c01t = to_equations[to_cost_function.equation_index(power=-(x0 + x1) / 2)]
+                a01 = a01f + a01t
+                b01 = b01f - b01t
+                c01 = c01f + c01t
+                x01, cost01 = minimise_trinomial(a=a01, b=b01, c=c01, x_min=x0, x_max=x1, x_default=0)
+
+            # - On [x1 ; x2]
+            if x2 == x1:
+                x12, cost12 = x2, from_cost_function.compute_cost(power=x2) + to_cost_function.compute_cost(power=-x2)
+            else:
+                a12f, b12f, c12f = from_equations[from_cost_function.equation_index(power=(x1 + x2) / 2)]
+                a12t, b12t, c12t = to_equations[to_cost_function.equation_index(power=-(x1 + x2) / 2)]
+                a12 = a12f + a12t
+                b12 = b12f - b12t
+                c12 = c12f + c12t
+                x12, cost12 = minimise_trinomial(a=a12, b=b12, c=c12, x_min=x1, x_max=x2, x_default=0)
+
+            # Return the minimum cost
+            if cost01 < cost12:
+                x, cost = x01, cost01
+            elif cost12 < cost01:
                 x, cost = x12, cost12
-        return x, cost
+            else:  # cost01 = cost12
+                # Choose the smallest export (in absolute value)
+                x, cost = min(x01, x12, key=lambda value: abs(value)), cost01
+
+            return x, cost
 
 
 OUT_ZONE_NAME = "OUTSIDE"
