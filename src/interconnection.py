@@ -268,6 +268,9 @@ class Interconnection:
 
             return x, cost
 
+    def init_current_power(self, timestep: pd.Timestamp):
+        self._current_power = max(min(self._historical_powers[timestep], self._power_rating), - self._power_rating)
+
     def compare_power_series(self, path):
         """
         Generate and save plots comparing simulated vs historical powers for the interconnection,

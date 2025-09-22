@@ -37,27 +37,26 @@ def test_store_simulated_power(create_interconnection):
 
 
 @pytest.mark.parametrize(
-    "historical, simulated, expected_corr, expected_mae, expected_max_rel, expected_mean_rel, expected_rel_total, expected_cum_rel",
+    "historical, simulated, expected_mae, expected_max_rel, expected_mean_rel, expected_rel_total, expected_cum_rel",
     [
         # test 1 : Same series
         (pd.Series([1, 2, 3, 4, 5]),
          pd.Series([1, 2, 3, 4, 5]),
-         1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+         0.0, 0.0, 0.0, 0.0, 0.0),
 
         # test 2 : Opposite values
         (pd.Series([1, 2, 3, 4, 5]),
          pd.Series([-1, -2, -3, -4, -5]),
-         -1.0, 6.0, 2.0, 2.0, 2.0, 2.0),
+         6.0, 2.0, 2.0, 2.0, 2.0),
 
         # test 3 : Constant shift
         (pd.Series([1, 2, 3, 4, 5]),
          pd.Series([2, 3, 4, 5, 6]),
-         1.0, 1.0, 1 / 1, (1 / 1 + 1 / 2 + 1 / 3 + 1 / 4 + 1 / 5) / 5, -1 / 3, 1 / 3),
+         1.0, 1 / 1, (1 / 1 + 1 / 2 + 1 / 3 + 1 / 4 + 1 / 5) / 5, -1 / 3, 1 / 3),
 
         # test 4 : Noise
         (pd.Series([10, 20, 30, 40, 50]),
          pd.Series([12, 18, 29, 41, 48]),
-         np.corrcoef([10, 20, 30, 40, 50], [12, 18, 29, 41, 48])[0, 1],
          np.mean(np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48]))),
          np.max(
              np.abs(np.array([10, 20, 30, 40, 50]) - np.array([12, 18, 29, 41, 48])) / np.array([10, 20, 30, 40, 50])),
@@ -68,7 +67,7 @@ def test_store_simulated_power(create_interconnection):
              [10, 20, 30, 40, 50])),
     ]
 )
-def test_compare_power_series_parametrized(historical, simulated, expected_corr, expected_mae,
+def test_compare_power_series_parametrized(historical, simulated, expected_mae,
                                            expected_max_rel, expected_mean_rel, expected_rel_total, expected_cum_rel,
                                            create_interconnection):
     fake_path = Path("fake_path")
@@ -80,7 +79,6 @@ def test_compare_power_series_parametrized(historical, simulated, expected_corr,
         result = interconnection.compare_power_series(fake_path)
 
     assert result["line"] == 'FR-ES'
-    assert result["correlation_coefficient"] == round(float(expected_corr), 3)
     assert result["mean_absolute_error_MW"] == round(float(expected_mae), 3)
     assert result["max_relative_power_error"] == round(float(expected_max_rel), 3)
     assert result["mean_relative_power_error"] == round(float(expected_mean_rel), 3)

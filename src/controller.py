@@ -303,7 +303,8 @@ class Controller:
                 interco_powers = pd.Series(flow_forward.sub(flow_backward, fill_value=0),
                                            index=self._network.datetime_index).fillna(0)
 
-                self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
+                if len(flow_forward) != 0  or len(flow_backward) != 0:
+                    self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
                                                   power_rating, interco_powers)
 
             # Add interconnection with exterior

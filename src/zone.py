@@ -149,7 +149,10 @@ class Zone:
 
             # Return time steps for which the demand is negative. They must be skipped
             negative_demand = self._power_demand[self._power_demand < 0]
+            print(f"Missing timesteps for {self._name}:{len(negative_demand)}")
             return negative_demand.index
+        else:
+            return pd.Index()
 
     def add_storage(self, sector_name: str, historical_powers: pd.Series, is_controllable: bool, opf_mode: bool):
         """
@@ -337,7 +340,7 @@ class Zone:
             # If the market price correspond to a threshold price of a step model, we have power_max!=power_min and
             # therefore another point to add in the cost function.
             if power_max > power_min:
-                assert last_power == power_min
+                assert last_power == power_min, f"{self._name}: last power = {last_power}, power min = {power_min}"
                 last_cost += (power_max - power_min) * price
                 last_power = power_max
                 power_cost_points.append((last_power, last_cost))
