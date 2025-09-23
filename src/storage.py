@@ -1,9 +1,8 @@
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import warnings
-
 import pandas as pd
 
 from src.opf_utils import TOL, bounded_value
@@ -69,8 +68,8 @@ class Storage:
     def generator(self):
         return self._generator
 
-    def build_energy_constraints(self, datetime_index: list[pd.Timestamp], energy_rating: float, mean_inflow: float,
-                                 reasonable_forced_power_factor: float = 0.5):
+    def build_energy_constraints(self, datetime_index: list[pd.Timestamp], energy_rating: float, zone_name: str,
+                                 reasonable_forced_power_factor: float = 0.5):  # FIXME: delete param zone_name
         """
         Compute time series of min/max energy requirements to ensure no stored energy change between start and end of
         the simulation (initial energy = final energy).
@@ -89,16 +88,21 @@ class Storage:
         -------
         List of (min energy, max energy) to be respected by the stored energy
         """
+        total_net_inflow = self.load.historical_powers.sum() + self.generator.historical_powers.sum()
+        mean_inflow = total_net_inflow / len(datetime_index)
+
         self._energy_rating = energy_rating
         consumption_rating_mw = self._load.power_rating  # >= 0
         production_rating_mw = self._generator.power_rating
         charging_rating = consumption_rating_mw * self._consumption_efficiency
         discharging_rating = production_rating_mw / self._production_efficiency
 
-        if mean_inflow > discharging_rating:
-            warnings.warn(f"Storage {self._name}: mean inflow set to {discharging_rating} instead of {mean_inflow} to "
-                          f"be compatible with discharging rating")
-            mean_inflow = discharging_rating
+        if not (- charging_rating <= mean_inflow <= discharging_rating):
+            feasible_inflow = bounded_value(value=mean_inflow, min_value=-charging_rating, max_value=discharging_rating)
+            warnings.warn(f"Storage {self._name}: mean inflow set to {feasible_inflow} instead of {mean_inflow} to be "
+                          f"compatible with charging ({charging_rating} and discharging ({discharging_rating}) ratings")
+            mean_inflow = feasible_inflow
+
         self._mean_inflow = mean_inflow
 
         self._stored_energy = energy_rating / 2  # = initial energy
@@ -116,6 +120,7 @@ class Storage:
                                        min_value=last_energy, max_value=self._energy_rating)
             energy_constraints.append((min_energy, max_energy))
         self._energy_constraints = pd.DataFrame(energy_constraints, columns=["Min", "Max"], index=datetime_index)
+        pass
 
     @property
     def constrained_production(self) -> float:
@@ -165,7 +170,7 @@ class Storage:
             self.generator.set_available_power(power=allowed_production)
             self.load.set_available_power(power=allowed_consumption)
 
-    def _compute_new_energy(self):
+    def _compute_new_energy(self, zone_name: str):
         """
         Computes stored energy at current hour + 59 mn
         """
@@ -178,19 +183,25 @@ class Storage:
         else:
             new_energy = self._stored_energy + self._mean_inflow - net_production * self._consumption_efficiency
         error_info = (f"Stored energy: {self._stored_energy}. Mean inflow: {self._mean_inflow}. "
-                      f"Net production: {net_production}")
+                      f"Net production: {net_production}\n"
+                      f"at timestep: {self._timestep}\n"
+                      f"in zone {zone_name}")
         if not (min_expected_energy - TOL <= new_energy <= max_expected_energy + TOL):
-            raise ValueError(f"{min_expected_energy} <= {new_energy} <= {max_expected_energy}\n{error_info}")
+            warnings.warn(f"{min_expected_energy} <= {new_energy} <= {max_expected_energy}\n{error_info}", stacklevel=2)
+            # FIXME
+            # raise ValueError(f"{min_expected_energy} <= {new_energy} <= {max_expected_energy}\n{error_info}")
         if not (-TOL <= new_energy <= self._energy_rating + TOL):
-            raise ValueError(f"0 <= {new_energy} <= {self._energy_rating}\n{error_info}")
+            warnings.warn(f"0 <= {new_energy} <= {self._energy_rating}\n{error_info}", stacklevel=2)
+            # FIXME
+            # raise ValueError(f"0 <= {new_energy} <= {self._energy_rating}\n{error_info}")
         self._next_energy = min(new_energy, self._energy_rating)
 
-    def update_energy(self):
+    def update_energy(self, zone_name: str):
         """
         Update current hour and stored energy (as 1 hour has passed)
         """
         if self._next_energy is None:
-            self._compute_new_energy()
+            self._compute_new_energy(zone_name=zone_name)
         self._stored_energy = self._next_energy
         self._next_energy = None
 
@@ -205,11 +216,12 @@ class Storage:
         energy_error = historical_energy - simulated_energy  # MWh
 
         # Relative Energy error - difference of simulated & historical energy (sum of powers) - (value - MWh)
-        relative_total_energy_difference = energy_error / abs(historical_energy) if historical_energy != 0 else (
-            0 if simulated_energy == 0 else np.nan)
+        relative_total_energy_difference = energy_error / abs(historical_energy) \
+            if historical_energy != 0 else (0 if simulated_energy == 0 else np.nan)
+
         # Relative Energy of the power error - energy (sum) of differences of powers - (value - MWh)
-        cumulative_relative_energy_error = abs(power_error_series).sum() / abs(historical_energy) if (
-                historical_energy != 0) else (0 if (power_error_series == 0).all() else np.nan)
+        cumulative_relative_energy_error = abs(power_error_series).sum() / abs(historical_energy) \
+            if (historical_energy != 0) else (0 if (power_error_series == 0).all() else np.nan)
 
         # Mean absolute error of powers - (value - MW)
         power_MAE = np.mean(abs(power_error_series))

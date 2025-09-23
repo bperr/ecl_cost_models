@@ -179,6 +179,7 @@ class Sector:
             mu_model, sigma_model = np.mean(modelled_use_ratios), np.std(modelled_use_ratios)
 
             # Extract historical values (mean and standard deviation) - avoid division by 0
+            assert len(self._availabilities) != 0, f"Availabilities are empty for {self.name}"
             historical_use_ratios = (self._historical_powers[self._availabilities != 0]
                                      / self._availabilities[self._availabilities != 0])
 
@@ -392,6 +393,7 @@ class Sector:
         # Relative Energy error - difference of simulated & historical energy (sum of powers) - (value - MWh)
         relative_total_energy_difference = energy_error / abs(historical_energy) if historical_energy != 0 else (
             0 if simulated_energy == 0 else np.nan)
+
         # Relative Energy of the power error - energy (sum) of differences of powers - (value - MWh)
         cumulative_relative_energy_error = abs(power_error_series).sum() / abs(historical_energy) if (
                 historical_energy != 0) else (0 if (power_error_series == 0).all() else np.nan)
@@ -443,18 +445,18 @@ class Sector:
 
         plt.figure(figsize=(10, 6))
         if self._name == "Demand":
-            (- self.historical_powers).plot(label='Historical', linewidth=0.5, drawstyle='steps-post')
+            (- self._historical_powers).plot(label='Historical', linewidth=0.5, drawstyle='steps-post')
         else:
-            self.historical_powers.plot(label='Historical', linewidth=0.5, drawstyle='steps-post')
+            self._historical_powers.plot(label='Historical', linewidth=0.5, drawstyle='steps-post')
 
-        self.simulated_powers.plot(label='Simulation', linewidth=0.5, linestyle='--', drawstyle='steps-post')
+        self._simulated_powers.plot(label='Simulation', linewidth=0.5, linestyle='--', drawstyle='steps-post')
 
         plt.legend()
         plt.title(f"{self.name} - {zone_name}")
         plt.xlabel("Timestep")
         plt.ylabel("Power (MW)")
 
-        if self.historical_powers.min() > 0 and self.simulated_powers.min() > 0:
+        if self._historical_powers.min() > 0 and self._simulated_powers.min() > 0:
             plt.ylim(bottom=0)
 
         error_text = (f"Max error : {max_relative_power_error:.2%}\n"

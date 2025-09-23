@@ -149,7 +149,7 @@ class Network:
             zone_price_models = price_models[zone_name]
             zone.set_price_model(zone_price_models)
 
-    def build_storage_constraints(self, energy_ratings: dict, mean_inflows: dict):
+    def build_storage_constraints(self, energy_ratings: dict):
         """
         Build min/max energy constraint time series for each storage.
 
@@ -160,8 +160,7 @@ class Network:
         """
         for zone_name, zone in self._zones.items():
             zone.build_storage_constraints(datetime_index=self._datetime_index,
-                                           energy_ratings=energy_ratings[zone_name],
-                                           mean_inflows=mean_inflows[zone_name])
+                                           energy_ratings=energy_ratings[zone_name])
 
     def initialise_opf(self, timestep):
         """

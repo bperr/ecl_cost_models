@@ -11,10 +11,6 @@ if __name__ == "__main__":
     work_dir = Path("C:/Users/a.faivre/PycharmProjects/ECL cost models/Working/temp")
     db_dir = Path("C:/Users/a.faivre/PycharmProjects/ECL cost models/DataBase")
 
-    # controller = Controller(work_dir=work_dir, db_dir=db_dir)
-    # controller.run_opfs()
-    # controller.build_price_models()
-    # exit(0)
-
     controller = Controller(work_dir=work_dir, db_dir=db_dir)
+    # controller.build_price_models()
     controller.run_opfs()

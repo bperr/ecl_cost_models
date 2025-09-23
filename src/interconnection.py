@@ -3,6 +3,7 @@ from __future__ import annotations  # Postpones annotation checking
 from typing import TYPE_CHECKING
 
 from src.opf_utils import LineCostFunction, TOL, bounded_value, minimise_trinomial
+from src.tmp import plot_line_cost_function
 
 if TYPE_CHECKING:  # False at runtime
     from zone import Zone  # Import zone only during type checking, not at runtime
@@ -127,6 +128,15 @@ class Interconnection:
 
         if cost_change > TOL:  # >0
             print("!!!!!!!!!!!!!!!!!!!!!!! Error: cost has increased !!!!!!!!!!!!!!!!!!!!!!!")
+            print(f"current: {self._current_power}MW --> {current_cost}€")
+            print(f"best: {best_export}MW --> {best_cost}€")
+            print(f"{self._zone_from.name}-{self.zone_to.name}")
+            print(f"Power rating: {self._power_rating}")
+            print(f"from prices: {from_cost_function.prices}")
+            print(f"from costs: {from_cost_function.points}")
+            print(f"to prices: {to_cost_function.prices}")
+            print(f"to costs: {to_cost_function.points}")
+            plot_line_cost_function(self, from_cost_function=from_cost_function,to_cost_function=to_cost_function)
         self.set_export(power=best_export)
         return cost_change
 
@@ -187,9 +197,14 @@ class Interconnection:
         # Sort by power
         threshold_points_cost = np.array(threshold_points_cost_list)
         threshold_points_cost = threshold_points_cost[threshold_points_cost[:, 0].argsort()]
+
+        # Remove duplicate/close points
+        power_diff = np.concatenate(([np.inf], np.diff(threshold_points_cost[:, 0])))
+        threshold_points_cost = threshold_points_cost[power_diff > TOL]
+
         # Find minimum cost
         min_cost = threshold_points_cost[:, 1].min()
-        min_cost_indexes = np.where(threshold_points_cost[:, 1] == min_cost)[0]
+        min_cost_indexes = np.where(abs(threshold_points_cost[:, 1] - min_cost) <= TOL)[0]
 
         if len(min_cost_indexes) > 2:
             # There are more than two threshold powers with minimum cost. The cost function is constant between them!
@@ -267,9 +282,6 @@ class Interconnection:
                 x, cost = min(x01, x12, key=lambda value: abs(value)), cost01
 
             return x, cost
-
-    def init_current_power(self, timestep: pd.Timestamp):
-        self._current_power = max(min(self._historical_powers[timestep], self._power_rating), - self._power_rating)
 
     def compare_power_series(self, path):
         """

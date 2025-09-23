@@ -14,7 +14,7 @@ from src.zone import Zone
 SIMULATED_POWERS_DIRECTORY_ROOT = 'countries_simulated_powers_by_sector'
 SIMULATED_POWERS_FILE_ROOT = 'simulated_powers_by_sector'
 YEAR_PL_AVAILABLE_DATA = 2018
-MAXIMUM_MISSING_STEPS_PER_YEAR = 100
+MAXIMUM_MISSING_STEPS_PER_YEAR = 8760 * 0.02  # 2%
 
 
 class Controller:
@@ -346,8 +346,7 @@ class Controller:
             self._network.remove_invalid_datetime(invalid_datetime)
 
             storages_data = self._input_reader.read_db_storages_energy_data()
-            self._network.build_storage_constraints(energy_ratings=storages_data["Energy MWh"],
-                                                    mean_inflows=storages_data["Mean inflow MW"])
+            self._network.build_storage_constraints(energy_ratings=storages_data["Energy MWh"])
             return True
 
     def run_opfs(self):

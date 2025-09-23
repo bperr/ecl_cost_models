@@ -4,7 +4,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 from src.sector import Sector
 
@@ -329,7 +329,7 @@ def test_store_simulated_power(sector_setup):
     ]
 )
 def test_compare_power_series_parametrized(
-    historical, simulated, expected_corr, expected_mae,
+    historical, simulated, expected_mae,
     expected_max_rel, expected_mean_rel, expected_rel_total, expected_cum_rel
 ):
     zone_name = "FR"
@@ -374,5 +374,5 @@ def test_plot_power_errors(sector_setup):
             patch("pathlib.Path.mkdir"):
         sector.plot_power_errors(zone, errors_data, fake_path)
 
-    mock_savefig.assert_called_once_with(expected_path)
+    mock_savefig.assert_called_once_with(expected_path, dpi=ANY)
     mock_close.assert_called_once()

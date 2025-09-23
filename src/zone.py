@@ -166,11 +166,14 @@ class Zone:
         """
         storage = Storage(sector_name, historical_powers, is_controllable, opf_mode=opf_mode)
         self._storages.append(storage)
-        # Availabilities are not built for storage
+        # Availabilities are not built for storage in opf mode
+        if not opf_mode:
+            storage.load.build_availabilities()
+            storage.generator.build_availabilities()
         self.sectors.append(storage.load)
         self.sectors.append(storage.generator)
 
-    def build_storage_constraints(self, datetime_index: list[pd.Timestamp], energy_ratings: dict, mean_inflows: dict):
+    def build_storage_constraints(self, datetime_index: list[pd.Timestamp], energy_ratings: dict):
         """
         Compute time series of min/max energy requirements per storage, to ensure no stored energy change between start
         and end of the simulation (initial energy = final energy).
@@ -184,7 +187,7 @@ class Zone:
         for storage in self._storages:
             storage.build_energy_constraints(datetime_index=datetime_index,
                                              energy_rating=energy_ratings[storage.name],
-                                             mean_inflow=mean_inflows[storage.name])
+                                             zone_name=self._name)
 
     def add_interconnection(self, interconnection: Interconnection):
         """
@@ -478,7 +481,7 @@ class Zone:
 
     def update_storages_energy(self):
         for storage in self._storages:
-            storage.update_energy()
+            storage.update_energy(zone_name=self._name)
 
     def compare_power_series(self, path: Path):
         """
@@ -509,8 +512,6 @@ class Zone:
             storages_names.append(storage.name)
 
         for sector in self._sectors:
-            if sector.name not in storages_names:
-                zone_error_data.append(sector.compare_power_series(self._name, path))
+            zone_error_data.append(sector.compare_power_series(self._name, path))
 
         return zone_error_data
-
