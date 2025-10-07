@@ -15,6 +15,7 @@ SIMULATED_POWERS_DIRECTORY_ROOT = 'countries_simulated_powers_by_sector'
 SIMULATED_POWERS_FILE_ROOT = 'simulated_powers_by_sector'
 YEAR_PL_AVAILABLE_DATA = 2018
 MAXIMUM_MISSING_STEPS_PER_YEAR = 8760 * 0.02  # 2%
+HOURS_IN_YEAR = 8760
 
 
 class Controller:
@@ -303,15 +304,15 @@ class Controller:
                 interco_powers = pd.Series(flow_forward.sub(flow_backward, fill_value=0),
                                            index=self._network.datetime_index).fillna(0)
 
-                if len(flow_forward) != 0  or len(flow_backward) != 0:
+                if len(flow_forward) != 0 or len(flow_backward) != 0:
                     self._network.add_interconnection(self._network.zones[zone_from], self._network.zones[zone_to],
-                                                  power_rating, interco_powers)
+                                                      power_rating, interco_powers)
 
             # Add interconnection with exterior
             exterior = Zone(OUT_ZONE_NAME, historical_prices=pd.Series())
             for zone_name, zone in self._network.zones.items():
                 flow_forward = self._interco_powers[(self._interco_powers['zone_from'] == zone_name) & (
-                            self._interco_powers['zone_to'] == OUT_ZONE_NAME)].set_index("Time")["Power (MW)"]
+                        self._interco_powers['zone_to'] == OUT_ZONE_NAME)].set_index("Time")["Power (MW)"]
 
                 flow_backward = self._interco_powers[(self._interco_powers['zone_from'] == OUT_ZONE_NAME) & (
                         self._interco_powers['zone_to'] == zone_name)].set_index("Time")["Power (MW)"]
@@ -390,31 +391,53 @@ class Controller:
         - The directory is created under the working directory.
         """
         start_year, end_year = None, None
+        energy_dict_simulated = {}
+        energy_dict_historical = {}
         for zone_name, zone in self._network.zones.items():
             sectors = zone.sectors
 
             # Get the simulated power series for each sector of the current zone
-            sector_data = {}
+            simulated_sector_data = {}
+            historical_sector_data = {}
             for sector in sectors:
-                sector_name = sector.name
-                simulated_powers = sector.simulated_powers
                 if sector.is_load:
-                    simulated_powers = -simulated_powers
-                if f'{sector_name}_MW' in sector_data.keys():  # storage
-                    sector_data[f'{sector_name}_MW'] += simulated_powers
+                    sector_name = f"{sector.name}_load"
                 else:
-                    sector_data[f'{sector_name}_MW'] = simulated_powers
+                    sector_name = sector.name
+
+                simulated_sector_data[f'{sector_name}_MW'] = sector.simulated_powers
+                historical_sector_data[f'{sector_name}_MW'] = sector.historical_powers
 
             # Build the DataFrame with data from all sectors of the current zone
-            combined_df = pd.concat(sector_data, axis=1)
-
-            # Create a first column "Start time" with index (timesteps)
-            combined_df.insert(0, 'Start time', combined_df.index)
+            simulated_combined_df = pd.concat(simulated_sector_data, axis=1)
+            historical_combined_df = pd.concat(historical_sector_data, axis=1)
 
             # sheet name
-            start_year = combined_df['Start time'].min().year
-            end_year = combined_df['Start time'].max().year
-            sheet_name = f'{start_year}-{end_year}'
+            start_year = simulated_combined_df.index.min().year
+            end_year = simulated_combined_df.index.max().year
+            simulation_sheet_name = f'simulated-{start_year}-{end_year}'
+            historical_sheet_name = f'historical-{start_year}-{end_year}'
+
+            simulation_energy_year = simulated_combined_df.sum(axis=0)* HOURS_IN_YEAR / len(
+                simulated_combined_df.index)
+            historical_energy_year = historical_combined_df.sum(axis=0)* HOURS_IN_YEAR / len(
+                historical_combined_df.index)
+
+            # save zone energy
+            energy_dict_simulated[zone.name] = simulation_energy_year
+            energy_dict_historical[zone.name] = historical_energy_year
+
+            # Create a row with Energy produced over the whole year (8760h)
+            simulated_combined_df.loc["Total Energy year"] = simulation_energy_year
+            historical_combined_df.loc["Total Energy year"] = historical_energy_year
+
+            # Create a row with Energy produced over the whole simulation
+            simulated_combined_df.loc["Total Energy simulation"] = simulation_energy_year
+            historical_combined_df.loc["Total Energy simulation"] = historical_energy_year
+
+            # Create a first column "Start time" with index (timesteps)
+            simulated_combined_df.insert(0, 'Start time', simulated_combined_df.index)
+            historical_combined_df.insert(0, 'Start time', historical_combined_df.index)
 
             # file path
             folder_name = f"{SIMULATED_POWERS_DIRECTORY_ROOT}_{start_year}-{end_year}"
@@ -426,9 +449,18 @@ class Controller:
 
             # Export Excel
             with pd.ExcelWriter(file_path) as writer:
-                combined_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                simulated_combined_df.to_excel(writer, sheet_name=simulation_sheet_name, index=False)
+                historical_combined_df.to_excel(writer, sheet_name=historical_sheet_name, index=False)
 
             print(f'File successfully exported : {file_path}')
+
+        energy_simulated_df = pd.DataFrame.from_dict(energy_dict_simulated)
+        energy_historical_df = pd.DataFrame.from_dict(energy_dict_historical)
+
+        with pd.ExcelWriter(self._work_dir / f"{SIMULATED_POWERS_DIRECTORY_ROOT}_{start_year}-{end_year}" / "energy.xlsx") as writer:
+            energy_simulated_df.to_excel(writer, sheet_name="Simulated energy", index=True)
+            energy_historical_df.to_excel(writer, sheet_name="Historical energy", index=True)
+
         self.compare_power_series(start_year, end_year)
 
     def compare_power_series(self, start_year: int, end_year: int):

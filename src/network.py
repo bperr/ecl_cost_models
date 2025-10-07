@@ -267,7 +267,7 @@ class Network:
 
         # Start optimisation loop
         converged = False
-        iter_max = 100
+        iter_max = 150
         i = 0
         while not converged and i < iter_max:
             cost_change = 0
@@ -280,6 +280,12 @@ class Network:
             i += 1
 
         if not converged:
+            # We still need to update storage energy to at least respect its constrained production
+            warnings.warn(f"At timestep {timestep}, the OPF could not converge", stacklevel=2)
+            for zone in self._zones.values():
+                for sector in zone.sectors:
+                    sector.set_current_power(0)  # No consumption nor generation
+                zone.update_storages_energy()
             return False  # The OPF did not converge
 
         # Run market in each zone with the final exports

@@ -334,10 +334,9 @@ class Sector:
                 title = f"{zone_name} - {self.name} - Production"
 
             model_x = [min(x_min, price_min), price_min, price_max, max(x_max, price_max)]
-
             plt.plot(model_x, model_y, c='red')
             plt.xlim(x_min, x_max)
-            plt.xlabel("Price (€)")
+            plt.xlabel("Price (€/MWh)")
             plt.ylabel("use ratio")
             fig.suptitle(title, fontsize=10)
             plt.savefig(path)
@@ -353,7 +352,7 @@ class Sector:
         :param extra_power: If storage -> constrained production (if generator) or constrained consumption (if load)
         """
         if self.is_load:
-            self._simulated_powers[timestep] = - self._current_power - extra_power
+            self._simulated_powers[timestep] = - (self._current_power + extra_power)
         else:
             self._simulated_powers[timestep] = self._current_power + extra_power
         self._current_power = 0

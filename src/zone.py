@@ -99,7 +99,7 @@ class Zone:
         for sector in self.sectors:
             if sector.name not in price_models.keys():
                 # There is no provided price model for this sector
-                assert sector.historical_powers.sum() == 0  # Because the sector does not really exist in this zone
+                assert sector.historical_powers.sum() == 0, f"{self._name}-{sector.name}"  # Because the sector does not really exist in this zone
                 sector_price_model = (FAKE_PROD_PRICE, FAKE_PROD_PRICE)  # Default value
             else:
                 price_components = price_models[sector.name]
@@ -223,7 +223,7 @@ class Zone:
             elif sector in load_to_storage.keys():
                 constrained_production = load_to_storage[sector].constrained_production
                 if constrained_production < 0:
-                    extra_power = constrained_production  #
+                    extra_power = - constrained_production  #
             sector.store_simulated_power(timestep, extra_power=extra_power)
 
         assert self._current_cost_function is not None
